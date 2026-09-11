@@ -72,10 +72,12 @@ class Handler(BaseHTTPRequestHandler):
         if origin and origin not in {'http://'+host for host in allowed}:
             self._json({'error':'Cross-origin access is disabled'},403);return False
         if self.headers.get('Sec-Fetch-Site')=='cross-site':
+            if self.command=='GET' and self.headers.get('Sec-Fetch-Dest')=='document':
+                return True
             self._json({'error':'Cross-site access is disabled'},403);return False
         return True
 
-    def _authorized(self):
+    def _authorized(self,query=None):
         header=self.headers.get('Authorization','')
         supplied=header[7:] if header.startswith('Bearer ') else ''
         if not supplied:
@@ -83,12 +85,16 @@ class Handler(BaseHTTPRequestHandler):
                 cookies=SimpleCookie(self.headers.get('Cookie',''))
                 supplied=cookies['threadline_session'].value if 'threadline_session' in cookies else ''
             except Exception: supplied=''
+        if not supplied and query:
+            supplied=query.get('token',[''])[0]
         if not hmac.compare_digest(supplied,self.server.token):
             self._json({'error':'Local session required. Open the launch URL printed by Threadline, or provide your local bearer token.'},401)
             return False
         return True
 
     def _send(self,body: bytes,status: int=200,mime: str='application/json; charset=utf-8',headers: dict | None=None):
+        headers=dict(headers or {})
+        headers.setdefault('Connection','close')
         self.send_response(status)
         self.send_header('Content-Type',mime)
         self.send_header('Content-Length',str(len(body)))
@@ -96,9 +102,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Referrer-Policy','no-referrer')
         self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'")
-        for key,value in (headers or {}).items(): self.send_header(key,value)
+        for key,value in headers.items(): self.send_header(key,value)
         self.end_headers()
         if self.command!='HEAD': self.wfile.write(body)
+        self.close_connection=True
 
     def _json(self,value,status=200,headers=None):
         self._send(canonical(value).encode('utf-8'),status,headers=headers)
@@ -132,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith('/api/') or path.startswith('/demo/'):
                 if path=='/api/health' and not post:
                     self._json({'ok':True,'version':__version__,'localOnly':True});return
-                if not self._authorized(): return
+                if not self._authorized(query): return
             if post:
                 body=self._read_body()
                 self._post(path,body);return
@@ -188,7 +195,7 @@ class Handler(BaseHTTPRequestHandler):
     def _post(self,path,body):
         store=self.server.store
         if path=='/api/session':
-            self._json({'ok':True,'version':__version__},headers={'Set-Cookie':f'threadline_session={self.server.token}; HttpOnly; SameSite=Strict; Path=/'})
+            self._json({'ok':True,'version':__version__},headers={'Set-Cookie':f'threadline_session={self.server.token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000'})
             return
         if path=='/api/projects':
             if body.get('mode','published')!='published':
@@ -273,11 +280,12 @@ class Handler(BaseHTTPRequestHandler):
         if not self.server.stream_slots.acquire(blocking=False):
             self._json({'error':'Too many live views. Close extra tabs.'},429);return
         try:
+            self.connection.settimeout(None)
             self.send_response(200)
             self.send_header('Content-Type','text/event-stream; charset=utf-8')
             self.send_header('Cache-Control','no-cache, no-store')
             self.send_header('X-Accel-Buffering','no')
-            self.send_header('Connection','close')
+            self.send_header('Connection','keep-alive')
             self.end_headers()
             self.wfile.write(b'retry: 1500\n\n');self.wfile.flush()
             last=None;last_heartbeat=0

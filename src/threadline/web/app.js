@@ -14,9 +14,12 @@ function caught(fn){return async(...args)=>{try{return await fn(...args);}catch(
 const projectInfo=()=>S.projects.find(p=>p.id===S.pid)||{};
 const bundle=()=>S.bundles?.find(b=>b.snapshot.project.id===S.pid);
 const route=(action,query='')=>`/api/projects/${encodeURIComponent(S.pid)}/${action}${query?'?'+query:''}`;
+function getStoredToken(){try{return localStorage.getItem('threadline_token')||'';}catch{return '';}}
+function setStoredToken(token){try{if(token)localStorage.setItem('threadline_token',token);else localStorage.removeItem('threadline_token');}catch{}}
 async function api(url,body,headers={}){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),15000);
- try{const r=await fetch(url,{method:body!==undefined?'POST':'GET',credentials:'same-origin',headers:{...(body!==undefined?{'Content-Type':'application/json'}:{}),...headers},body:body!==undefined?JSON.stringify(body):undefined,signal:ctl.signal});const data=await r.json();if(!r.ok){if(r.status===401&&!$('auth-dialog').open)$('auth-dialog').showModal();throw Error(data.error||`Request failed (${r.status})`);}return data;}finally{clearTimeout(timer);}
+ const token=getStoredToken(),authHeader=token?{'Authorization':'Bearer '+token}:{};
+ try{const r=await fetch(url,{method:body!==undefined?'POST':'GET',credentials:'same-origin',headers:{...(body!==undefined?{'Content-Type':'application/json'}:{}),...authHeader,...headers},body:body!==undefined?JSON.stringify(body):undefined,signal:ctl.signal});const data=await r.json();if(!r.ok){if(r.status===401){setStoredToken(null);if(!$('auth-dialog').open)$('auth-dialog').showModal();}throw Error(data.error||`Request failed (${r.status})`);}return data;}finally{clearTimeout(timer);}
 }
 const map=new ThreadlineMap({container:$('cy'),layer:$('node-layer'),onNode:onNode,onEdge:showEdge,onBackground:()=>map.select(null),onZoom:z=>$('zoom-label').textContent=Math.round(z*100)+'%',onPositions:positions=>{const key=cacheKey();S.cache.set(key,{positions,viewport:map.viewport()});}});
 function cacheKey(){return [S.pid,S.mode,S.scope,S.page].join('|');}
@@ -198,9 +201,9 @@ function stateUpdate(data){
  // Reconnect reconciles with persisted HEAD rather than an ephemeral event queue.
 }
 function connectStream(){
- S.stream?.close();if(S.offline)return;const es=new EventSource('/api/stream');S.stream=es;es.onopen=()=>{S.connected=true;connection();};es.onerror=()=>{S.connected=false;connection();};es.addEventListener('state',e=>{try{stateUpdate(JSON.parse(e.data));}catch(exc){error('Live update could not be read: '+exc.message);}});
+ S.stream?.close();if(S.offline)return;const token=getStoredToken();const url='/api/stream'+(token?'?token='+encodeURIComponent(token):'');const es=new EventSource(url);S.stream=es;es.onopen=()=>{S.connected=true;connection();};es.onerror=()=>{S.connected=false;connection();};es.addEventListener('state',e=>{try{stateUpdate(JSON.parse(e.data));}catch(exc){error('Live update could not be read: '+exc.message);}});
 }
-async function authenticate(token){await api('/api/session',{}, {'Authorization':'Bearer '+token});try{history.replaceState(null,'',location.pathname+location.search);}catch{}$('auth-dialog').close();await listProjects();connectStream();}
+async function authenticate(token){setStoredToken(token);await api('/api/session',{},{'Authorization':'Bearer '+token});try{history.replaceState(null,'',location.pathname+location.search);}catch{}$('auth-dialog').close();await listProjects();connectStream();}
 function wire(){
  $('project-select').onchange=caught(async()=>{remember();S.pid=$('project-select').value;S.ticket++;S.head=0;S.graph=null;S.before=null;S.revision=null;S.mode='modules';S.building=false;resetScope();$('demo-change-button').disabled=false;await loadGraph({navigation:true});});
  $('home-button').onclick=e=>{e.preventDefault();S.trail=[];go('@root',{push:false});};$('back-button').onclick=back;$('zoom-in').onclick=()=>map.zoom(1.2);$('zoom-out').onclick=()=>map.zoom(1/1.2);$('fit-button').onclick=$('zoom-label').onclick=()=>map.fit();
@@ -221,9 +224,9 @@ function wire(){
  document.addEventListener('keydown',e=>{if(document.querySelector('dialog[open]')||/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))return;if(e.key==='/'||(e.key.toLowerCase()==='k'&&(e.metaKey||e.ctrlKey))){e.preventDefault();showSearch();}else if(e.key.toLowerCase()==='f'&&!e.metaKey&&!e.ctrlKey){e.preventDefault();map.fit();}else if(e.key==='Backspace'){e.preventDefault();if(S.scope!=='@root')back();}else if(e.key==='Escape'){closeDrawer();$('more-menu').hidden=true;}});
  window.addEventListener('beforeunload',()=>S.stream?.close());
 }
-async function boot(){wire();try{const embedded=$('threadline-data');if(embedded){openBundle(JSON.parse(embedded.textContent));return;}const token=new URLSearchParams(location.hash.slice(1)).get('token');if(token)await authenticate(token);else{await listProjects();connectStream();}}catch(e){error(e.message);drawEmpty();}
+async function boot(){wire();try{const embedded=$('threadline-data');if(embedded){openBundle(JSON.parse(embedded.textContent));return;}const hashToken=new URLSearchParams(location.hash.slice(1)).get('token');const token=hashToken||getStoredToken();if(token)await authenticate(token);else{await listProjects();connectStream();}}catch(e){error(e.message);drawEmpty();}
  // Fallback reconciles a dropped event channel; it does not replace the genuine SSE stream.
- setInterval(async()=>{if(S.offline||S.loading||!S.pid)return;try{const r=await api('/api/projects');stateUpdate(r);}catch{S.connected=false;connection();}},7000);
+ setInterval(async()=>{if(S.offline||S.loading||!S.pid)return;try{const r=await api('/api/projects');stateUpdate(r);}catch{if(!S.stream||S.stream.readyState!==1){S.connected=false;connection();}}},7000);
 }
 boot();
 }

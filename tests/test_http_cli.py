@@ -47,9 +47,11 @@ class HTTPTests(unittest.TestCase):
     def test_null_origin_rejected(self):self.assertEqual(self.req('/api/projects',headers={'Origin':'null'})[0],403)
     def test_cross_site_fetch_rejected(self):self.assertEqual(self.req('/api/projects',headers={'Sec-Fetch-Site':'cross-site'})[0],403)
     def test_same_origin_is_allowed(self):self.assertEqual(self.req('/api/projects',headers={'Origin':self.url})[0],200)
-    def test_auth_cookie_is_httponly_and_strict(self):
-        status,headers,_=self.req('/api/session',{});self.assertEqual(status,200);cookie=headers['Set-Cookie'];self.assertIn('HttpOnly',cookie);self.assertIn('SameSite=Strict',cookie)
+    def test_auth_cookie_is_httponly_and_lax(self):
+        status,headers,_=self.req('/api/session',{});self.assertEqual(status,200);cookie=headers['Set-Cookie'];self.assertIn('HttpOnly',cookie);self.assertIn('SameSite=Lax',cookie)
         self.assertEqual(self.req('/api/projects',auth=False,headers={'Cookie':cookie.split(';')[0]})[0],200)
+    def test_query_token_authorized(self):
+        self.assertEqual(self.req('/api/projects?token='+self.token,auth=False)[0],200)
     def test_html_never_embeds_local_token(self):
         status,_,body=self.req('/',auth=False);self.assertEqual(status,200);self.assertNotIn(self.token.encode(),body)
     def test_path_traversal_rejected(self):self.assertEqual(self.req('/%2e%2e/run.py')[0],404)
