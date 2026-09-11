@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -63,6 +64,16 @@ def connect_lock(install):
     try:
         os.write(fd,str(os.getpid()).encode());os.close(fd);yield
     finally:lock.unlink(missing_ok=True)
+
+def safe_rmtree(path):
+    p = Path(path)
+    if not p.exists(): return
+    def _onerror(func, p, exc_info):
+        try:
+            os.chmod(p, stat.S_IWRITE | stat.S_IREAD)
+            func(p)
+        except OSError: pass
+    shutil.rmtree(p, onerror=_onerror)
 
 def _subprocess_flags():
     flags = {}
@@ -132,7 +143,7 @@ def acquire(args,config,previous):
     receipt=read_json(root.parent/(key+'.json'))
     if root.exists():
         if getattr(args, 'refresh', False) or getattr(args, 'action', '') == 'refresh':
-            shutil.rmtree(root, ignore_errors=True)
+            safe_rmtree(root)
             (root.parent/(key+'.json')).unlink(missing_ok=True)
         else:
             if not receipt or receipt.get('repository_url')!=repo or receipt.get('requested_ref')!=ref:raise SetupError('Cached checkout has no matching installation receipt. Refusing to guess its identity.')
@@ -154,12 +165,13 @@ def acquire(args,config,previous):
         commit=run(['git','-C',stage,'rev-parse','HEAD'],env=env).strip()
         if expected and commit.lower()!=expected.lower():raise SetupError('Fetched commit does not match expected_commit; nothing was launched.')
         ident=core_manifest(stage)
+        safe_rmtree(root)
         os.replace(stage,root)
         receipt={**ident,'acquisition':'pinned Git checkout','repository_url':repo,'requested_ref':ref,'commit':commit,'installed_at':stamp()}
         private_write(root.parent/(key+'.json'),receipt)
         return root,receipt
     finally:
-        if stage.exists():shutil.rmtree(stage)
+        safe_rmtree(stage)
 
 OPENER=build_opener(ProxyHandler({}))
 def get(url,token=None,timeout=2):

@@ -41,7 +41,7 @@
     "src/threadline/web/map-view.js": "816f87953d81797c67996784fd48cb2d18233f1f0c52fc76d2afbe855bc0c35b",
     "src/threadline/web/style.css": "bb056073646a0e47550e0add6853301f1c779e3abfc0958d370d8f3f9b631599",
     "skills/threadline/scripts/threadline_cli.py": "8f22434723597cc10cec25c72e794b1ee822bf61e0f9d76b705f239deb06062f",
-    "skills/threadline/scripts/threadline_connect.py": "8db81aaf76ccddb509dcb422879c4387471abae5f9f967e7cad2a8b7a1282e5d",
+    "skills/threadline/scripts/threadline_connect.py": "a91aba8c6537e811b5b8bc4d65592dc1a5cb53c022ac2bf6fba6b4333b574764",
     "skills/threadline/scripts/threadline_host.py": "04282aff1002d98b99903cf75d9b674a39899263601899eecbd5fc834d7184fe",
     "schemas/features.schema.json": "5646f61581c9524b8fc121242c30de4b6d70790d259d1dcab37c79562f30d5d5",
     "schemas/graph.schema.json": "bfa4834012aaf2b18a0d6c65e41e1e1b38643c9b8a870818f968a48e0409fda6",
