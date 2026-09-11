@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101419"><title>Threadline · Live codebase map</title>
+<link rel="stylesheet" href="style.css">
+<script src="cytoscape.min.js" defer></script>
+<script src="graph.js" defer></script>
+<script src="map-view.js" defer></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" id="home-button" href="#" aria-label="Threadline architecture overview"><svg viewBox="0 0 28 28" width="28" height="28" aria-hidden="true"><path d="M6 7h9v14M15 12h7M6 7v14" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="4" width="6" height="6" rx="2" fill="currentColor"/><rect x="12" y="18" width="6" height="6" rx="2" fill="currentColor"/><rect x="19" y="9" width="6" height="6" rx="2" fill="currentColor"/></svg><span>threadline</span><span class="edition">LIVE MAP</span></a>
+  <div class="project-picker"><span class="project-dot"></span><select id="project-select" aria-label="Codebase"><option>Connecting…</option></select></div>
+  <div class="top-actions"><button id="search-open" class="search-trigger" title="Search codebase (/)" aria-label="Search codebase"><span class="search-icon">⌕</span><span>Find anything</span><kbd>/</kbd></button><span id="connection" class="connection"><i></i>Connecting</span><button id="more-button" class="icon-button" aria-label="More options" aria-expanded="false">•••</button></div>
+  <div id="more-menu" class="popover" hidden><button id="connect-button">Connect your codebase <span>↗</span></button><button id="import-button">Open graph data <span>↥</span></button><button id="export-button">Save portable map <span>↧</span></button><button id="play-button" hidden>Open example game <span>↗</span></button><button id="about-button">About this map <span>?</span></button></div>
+</header>
+<div id="error-banner" class="error-banner" role="alert" hidden></div>
+<div id="revision-banner" class="revision-banner" hidden><span id="revision-text"></span><button id="return-live">Return to live →</button></div>
+<main id="workspace">
+  <section id="stage" aria-label="Interactive codebase graph">
+    <div id="cy" role="application" aria-label="Codebase graph. Tab to a node and press Enter to explore. Drag to pan; scroll to zoom."></div>
+    <div id="node-plane"><div id="node-layer"></div></div>
+    <div class="canvas-heading">
+      <nav id="breadcrumbs" aria-label="Graph location"></nav>
+      <div class="scope-title"><h1 id="scope-title">Your code, connected.</h1><span id="scope-count"></span></div>
+      <p id="scope-caption">A live map of what is being built.</p>
+    </div>
+    <div class="canvas-tools">
+      <div class="view-switch" aria-label="Graph perspective"><button id="mode-modules" class="active" aria-pressed="true">Architecture</button><button id="mode-features" aria-pressed="false">Features</button></div>
+      <button id="demo-change-button" class="demo-button" hidden><span>▷</span> Watch a change <small>EXAMPLE</small></button>
+    </div>
+    <div id="graph-empty" class="empty-state" hidden><div class="empty-glyph">⌘</div><h2>Let the code take shape.</h2><p>Connect a repository or open graph data.<br>The viewer stays the same; your code supplies the map.</p><button id="empty-connect" class="primary-button">Connect a codebase</button></div>
+    <div id="page-controls" hidden><button id="previous-page" class="icon-button" aria-label="Previous components">←</button><span id="page-label"></span><button id="next-page" class="icon-button" aria-label="Next components">→</button></div>
+    <div class="map-controls"><button id="back-button" class="icon-button" title="Go up (Backspace)" aria-label="Go to parent scope" disabled>←</button><span></span><button id="zoom-out" class="icon-button" aria-label="Zoom out">−</button><button id="zoom-label" title="Fit graph (F)" aria-label="Fit graph">100%</button><button id="zoom-in" class="icon-button" aria-label="Zoom in">+</button><span></span><button id="fit-button" class="icon-button" title="Fit graph (F)" aria-label="Fit graph">⛶</button></div>
+    <div id="graph-hint" class="graph-hint"><span class="hint-dot"></span>Click a component to explore <span>·</span> Drag to arrange</div>
+    <div id="change-legend" class="change-legend" hidden><span class="added">+ Added</span><span class="changed">~ Changed</span><span class="removed">− Removed</span><button id="clear-changes" title="Clear the highlight, not the history">Dismiss</button></div>
+  </section>
+  <aside id="inspector" aria-label="Graph details" hidden><div class="drawer-head"><div><span id="drawer-kicker" class="eyebrow">IMPLEMENTATION</span><h2 id="drawer-title"></h2></div><button id="drawer-close" class="icon-button" aria-label="Close details">×</button></div><div id="drawer-body"></div></aside>
+</main>
+<footer class="livebar">
+  <button id="history-button" class="revision-button" title="Inspect retained revisions"><span class="history-glyph">◴</span><span id="revision-id">r–</span><span class="revision-caret">⌄</span></button>
+  <span class="livebar-separator"></span><span id="event-activity" class="activity-dot"></span><span id="event-summary">Waiting for the first source observation…</span>
+  <button id="changes-button" class="changes-button" hidden><span id="changes-summary"></span><span>View changes ↗</span></button>
+  <span id="source-identity" class="source-identity"></span>
+</footer>
+<dialog id="search-dialog" class="search-dialog"><form method="dialog" class="search-top"><span>⌕</span><input id="search-input" type="search" placeholder="Find a file, function, or feature…" aria-label="Search nodes" autocomplete="off"><button class="key-button" aria-label="Close search">Esc</button></form><div id="search-results"></div><div class="search-footer">Source-backed navigation <span>↑ ↓ to browse · Enter to open</span></div></dialog>
+<dialog id="help-dialog" class="help-dialog"><div class="modal-head"><span class="eyebrow">ONE VIEWER. ANY CODEBASE.</span><button id="help-close" class="icon-button" aria-label="Close help">×</button></div><h2 id="help-title">Keep a live map beside your agent.</h2><div id="help-body"></div></dialog>
+<dialog id="checkpoint-dialog" class="help-dialog"><form id="checkpoint-form"><div class="modal-head"><span class="eyebrow">A NAME, NOT A NEW GRAPH</span><button type="button" id="checkpoint-close" class="icon-button" aria-label="Cancel">×</button></div><h2>Mark a moment.</h2><p>A checkpoint names this revision. Every underlying change remains in history.</p><label>Checkpoint name<input id="checkpoint-name" maxlength="100" required placeholder="Memory system connected"></label><label>Note <span class="muted">optional</span><textarea id="checkpoint-note" rows="2" maxlength="2000"></textarea></label><button type="submit" class="primary-button">Save checkpoint</button></form></dialog>
+<dialog id="auth-dialog" class="help-dialog"><form id="auth-form"><span class="eyebrow">LOCAL SESSION</span><h2>Connect securely.</h2><p>Open the launch URL printed in your terminal, or enter its local session token here.</p><label>Session token<input id="auth-token" type="password" autocomplete="off" required></label><button type="submit" class="primary-button">Connect</button><p id="auth-error" class="muted"></p></form></dialog>
+<input id="import-file" type="file" accept=".json,application/json" hidden>
+<div id="toast" role="status" hidden></div><div id="announcer" class="sr-only" aria-live="polite"></div>
+</body></html>

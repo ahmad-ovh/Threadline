@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "threadline-workbench"
+version = "2.1.0"
+description = "Turn your project into a living architecture map as AI builds your code"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "AGPL-3.0-or-later"}
+authors = [{name = "Threadline contributors"}]
+dependencies = []
+
+[project.scripts]
+threadline = "threadline.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+threadline = ["web/*", "demo_templates/**/*"]

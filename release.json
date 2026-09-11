@@ -1,0 +1,29 @@
+{
+  "name": "Threadline",
+  "version": "2.1.0",
+  "date": "2026-09-12",
+  "scope": "Fixed Cytoscape live codebase viewer with WorkBuddy-first incremental graph update architecture and initial scanner",
+  "runtime": "Python 3.10+ with SQLite; modern local browser",
+  "runtimeThirdPartyPackages": {
+    "python": [],
+    "browser": [
+      {
+        "name": "Cytoscape.js",
+        "version": "3.33.1",
+        "license": "MIT",
+        "bundled": true
+      }
+    ]
+  },
+  "license": "AGPL-3.0-or-later",
+  "entrypoint": "python run.py demo",
+  "readOnlyPreview": "preview.html",
+  "privateStoreDefault": "~/.threadline",
+  "workbuddySkill": "dist/threadline.zip",
+  "repository": "https://github.com/ahmad-ovh/Threadline",
+  "renderer": "Cytoscape.js 3.33.1 + fixed accessible node cards",
+  "skillVersion": "2.1.0",
+  "wheel": "dist/threadline_workbench-2.1.0-py3-none-any.whl",
+  "connectionEntrypoint": "python tools/connect.py connect",
+  "upstreamFrontendUnchanged": true
+}

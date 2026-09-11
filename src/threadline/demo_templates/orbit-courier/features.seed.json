@@ -1,0 +1,34 @@
+{
+  "features": [
+    {
+      "id": "delivery-loop",
+      "name": "Delivery loop",
+      "description": "Collect cargo, then reach the station. Rules live separately from the player interface and board rendering.",
+      "files": [
+        "src/engine/core.js",
+        "src/engine/cargo.js",
+        "src/world/map.js",
+        "src/ui/main.js"
+      ]
+    },
+    {
+      "id": "finite-energy",
+      "name": "Finite energy",
+      "description": "Every legal movement spends one energy. Exhaustion and delivery are explicit outcomes, not visual-only effects.",
+      "files": [
+        "src/engine/core.js",
+        "src/world/map.js"
+      ]
+    },
+    {
+      "id": "board-feedback",
+      "name": "Readable space",
+      "description": "The canvas projects ship, cargo, walls and destination without implementing the game rules.",
+      "files": [
+        "src/ui/board.js",
+        "src/ui/main.js",
+        "src/world/map.js"
+      ]
+    }
+  ]
+}

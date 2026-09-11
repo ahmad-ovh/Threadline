@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "1.0",
+  "project": {
+    "id": "publisher-example",
+    "name": "External publisher example"
+  },
+  "source": {
+    "treeHash": "example-source-state-1",
+    "commit": null,
+    "branch": null,
+    "dirty": true,
+    "publisher": "documented-synthetic-example"
+  },
+  "nodes": [
+    {
+      "id": "module:src",
+      "kind": "module",
+      "label": "src",
+      "path": "src"
+    },
+    {
+      "id": "file:src/game.js",
+      "kind": "file",
+      "label": "game.js",
+      "path": "src/game.js",
+      "parent": "module:src",
+      "summary": "Synthetic publisher-contract example; no backing source supplied."
+    }
+  ],
+  "edges": [
+    {
+      "id": "contains-game",
+      "source": "module:src",
+      "target": "file:src/game.js",
+      "kind": "contains",
+      "evidence": []
+    }
+  ]
+}

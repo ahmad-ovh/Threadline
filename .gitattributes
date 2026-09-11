@@ -1,0 +1,10 @@
+# Stable runtime-manifest bytes across macOS, Linux and Windows Git checkouts.
+* text=auto eol=lf
+*.zip binary
+*.whl binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.mp4 binary
+*.webm binary
+*.pdf binary

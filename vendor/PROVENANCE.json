@@ -1,0 +1,10 @@
+{
+  "library": "Cytoscape.js",
+  "version": "3.33.1",
+  "license": "MIT",
+  "source": "Cytoscape standalone ESM distribution included in installed Gradio 6.5.1 frontend, cytoscape.esm-5J0xJHOV.js",
+  "originalSHA256": "38944c926eef34939819338782c1f5a9000e0f4c92208d73d6eb1c5b57cb2695",
+  "transform": "Wrap standalone ESM in IIFE, replace sole export with globalThis.cytoscape, prepend exact upstream MIT license; no library behavior modifications",
+  "bundledSHA256": "9e51f1e094f866835db998e4b903818126cd9e9c3c30d558cea9f1e1d49bf29f",
+  "upstream": "https://github.com/cytoscape/cytoscape.js"
+}

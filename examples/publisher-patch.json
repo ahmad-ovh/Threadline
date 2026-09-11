@@ -1,0 +1,44 @@
+{
+  "upsertNodes": [
+    {
+      "id": "file:src/memory.js",
+      "kind": "file",
+      "label": "memory.js",
+      "path": "src/memory.js",
+      "parent": "module:src"
+    }
+  ],
+  "removeNodes": [],
+  "upsertEdges": [
+    {
+      "id": "contains-memory",
+      "source": "module:src",
+      "target": "file:src/memory.js",
+      "kind": "contains",
+      "evidence": []
+    },
+    {
+      "id": "game-memory",
+      "source": "file:src/game.js",
+      "target": "file:src/memory.js",
+      "kind": "imports",
+      "evidence": [
+        {
+          "path": "src/game.js",
+          "line": 1,
+          "status": "unverified",
+          "method": "synthetic-contract-example",
+          "reference": "./memory.js"
+        }
+      ]
+    }
+  ],
+  "removeEdges": [],
+  "source": {
+    "treeHash": "example-source-state-2",
+    "commit": null,
+    "branch": null,
+    "dirty": true,
+    "publisher": "documented-synthetic-example"
+  }
+}

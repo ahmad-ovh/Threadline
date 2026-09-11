@@ -1,0 +1,34 @@
+{
+  "features": [
+    {
+      "id": "remembered-favors",
+      "name": "Remembered favors",
+      "description": "The keeper remembers an introduction and a repaired lantern. This human-authored mapping connects explicit state to the dialogue that explains it.",
+      "files": [
+        "src/domain/memory.js",
+        "src/narrative/dialogue.js",
+        "src/ui/main.js"
+      ]
+    },
+    {
+      "id": "earned-passage",
+      "name": "Earned passage",
+      "description": "A passage is granted only after both required actions and sufficient trust. A named feature links the gameplay objective to its rules.",
+      "files": [
+        "src/domain/rules.js",
+        "src/narrative/dialogue.js",
+        "src/ui/main.js"
+      ]
+    },
+    {
+      "id": "harbor-scene",
+      "name": "A responsive harbor",
+      "description": "The scene lights the lantern and moves the boat according to game state. Rendering is separated from the rules.",
+      "files": [
+        "src/ui/scene.js",
+        "src/ui/main.js",
+        "index.html"
+      ]
+    }
+  ]
+}
