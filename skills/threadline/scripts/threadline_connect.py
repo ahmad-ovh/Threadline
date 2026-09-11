@@ -64,9 +64,18 @@ def connect_lock(install):
         os.write(fd,str(os.getpid()).encode());os.close(fd);yield
     finally:lock.unlink(missing_ok=True)
 
+def _subprocess_flags():
+    flags = {}
+    if os.name == 'nt':
+        flags['creationflags'] = subprocess.CREATE_NO_WINDOW
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 0
+        flags['startupinfo'] = si
+    return flags
+
 def run(argv,cwd=None,timeout=180,env=None):
-    creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
-    try:p=subprocess.run([str(x) for x in argv],cwd=cwd,env=env,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=timeout,creationflags=creationflags)
+    try:p=subprocess.run([str(x) for x in argv],cwd=cwd,env=env,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=timeout,**_subprocess_flags())
     except (OSError,subprocess.TimeoutExpired) as exc:raise SetupError(f'Command could not run: {argv[0]} ({type(exc).__name__})') from exc
     if p.returncode:raise SetupError(f'Command failed ({p.returncode}): {Path(str(argv[0])).name}\n{p.stderr[-2000:] or p.stdout[-2000:]}')
     return p.stdout
@@ -122,11 +131,15 @@ def acquire(args,config,previous):
     root=args.install_root/'releases'/key
     receipt=read_json(root.parent/(key+'.json'))
     if root.exists():
-        if not receipt or receipt.get('repository_url')!=repo or receipt.get('requested_ref')!=ref:raise SetupError('Cached checkout has no matching installation receipt. Refusing to guess its identity.')
-        ident=core_manifest(root)
-        commit=run(['git','-C',root,'rev-parse','HEAD']).strip()
-        if commit!=receipt.get('commit') or (expected and commit.lower()!=expected.lower()):raise SetupError('Cached Git commit differs from the pinned installation.')
-        return root,{**receipt,**ident,'reused_installation':True}
+        if getattr(args, 'refresh', False) or getattr(args, 'action', '') == 'refresh':
+            shutil.rmtree(root, ignore_errors=True)
+            (root.parent/(key+'.json')).unlink(missing_ok=True)
+        else:
+            if not receipt or receipt.get('repository_url')!=repo or receipt.get('requested_ref')!=ref:raise SetupError('Cached checkout has no matching installation receipt. Refusing to guess its identity.')
+            ident=core_manifest(root)
+            commit=run(['git','-C',root,'rev-parse','HEAD']).strip()
+            if commit!=receipt.get('commit') or (expected and commit.lower()!=expected.lower()):raise SetupError('Cached Git commit differs from the pinned installation.')
+            return root,{**receipt,**ident,'reused_installation':True}
     if not args.trust_source:raise SetupError('The first Git fetch/execution requires --trust-source after approving the repository/ref. No code has been downloaded or run.')
     if not shutil.which('git'):raise SetupError('Git is required for automatic fetching. Install Git, or use --local-source with the included offline release.')
     root.parent.mkdir(parents=True,exist_ok=True)
@@ -244,6 +257,15 @@ def stop(args):
         time.sleep(.2)
     raise SetupError('Managed stop did not complete promptly. Check the local log. No unrelated process was killed.')
 
+def refresh(args):
+    config=read_json(args.config,{}) if getattr(args, 'config', None) else read_json(CONFIG,{})
+    previous=read_json(args.install_root/'connection.json')
+    args.trust_source=True
+    args.refresh=True
+    args.local_source=None
+    root,identity=acquire(args,config,previous)
+    return {'ok':True,'refreshed':True,'runtime_root':str(root),'version':identity.get('version'),'commit':identity.get('commit')}
+
 def cli():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--install-root',type=Path,default=DEFAULT_INSTALL,help='Trusted code cache/profile, outside your project')
@@ -255,7 +277,10 @@ def cli():
         c.add_argument('--name',default=None,help='Project display name')
         c.add_argument('--config',type=Path);c.add_argument('--repo');c.add_argument('--ref');c.add_argument('--expected-commit');c.add_argument('--local-source')
         c.add_argument('--trust-source',action='store_true',help='Explicitly authorize first execution of the reviewed source')
+        c.add_argument('--refresh',action='store_true',help='Force refresh cached runtime from remote repository')
         c.add_argument('--home',type=Path,default=DEFAULT_HOME);c.add_argument('--port',type=int,default=7331);c.add_argument('--interval',type=float,default=5.0);c.add_argument('--timeout',type=float,default=90);c.add_argument('--no-browser',action='store_true')
+    r=sub.add_parser('refresh',help='Force refresh cached runtime from remote repository')
+    r.add_argument('--config',type=Path);r.add_argument('--repo');r.add_argument('--ref');r.add_argument('--expected-commit')
     sub.add_parser('status');sub.add_parser('stop');sub.add_parser('open',help='Open private session locally; never print its token')
     args=p.parse_args();args.install_root=args.install_root.expanduser().resolve()
     if not args.action: args.action = 'connect'
@@ -265,6 +290,8 @@ def cli():
         if not 1<=args.port<=65535:raise SetupError('Use a TCP port from 1 through 65535.')
         if not .1<=args.interval<=300:raise SetupError('Observer interval must be between 0.1 and 300 seconds.')
         with connect_lock(args.install_root):return connect(args)
+    if args.action=='refresh':
+        with connect_lock(args.install_root):return refresh(args)
     if args.action=='status':return status(args)
     if args.action=='stop':return stop(args)
     state=status(args)

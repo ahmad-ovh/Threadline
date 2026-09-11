@@ -126,11 +126,18 @@ class Scanner:
         self.cache: dict[str,CacheEntry] = {}
         self.lock = threading.RLock()
         self.last_stats: dict = {}
+        self._git_cache: dict = {}
 
     def _git(self, root: Path, *args: str) -> bytes | None:
         try:
-            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            result = subprocess.run(['git','-C',str(root),*args],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=8,check=False,creationflags=creationflags)
+            extra = {}
+            if os.name == 'nt':
+                extra['creationflags'] = subprocess.CREATE_NO_WINDOW
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = 0
+                extra['startupinfo'] = si
+            result = subprocess.run(['git','-C',str(root),*args],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=8,check=False,**extra)
             return result.stdout if result.returncode==0 else None
         except (OSError,subprocess.TimeoutExpired): return None
 
@@ -335,9 +342,23 @@ class Scanner:
             nodes['feature:'+fid]={'id':'feature:'+fid,'kind':'feature','label':feature.get('name',fid),
                 'summary':feature.get('description',''),'evidence':evidence,'status':'stale' if stale else 'unverified' if unverified else 'interpretation',
                 'author':feature.get('author','human'),'files':paths,'note':'A source-linked interpretation, not proof of runtime behavior.'}
-        commit=self._git(root,'rev-parse','HEAD')
-        branch=self._git(root,'symbolic-ref','--short','HEAD')
-        status=self._git(root,'status','--porcelain','--untracked-files=normal','--','.')
+        git_dir = root / '.git'
+        git_mtime = 0
+        if git_dir.is_dir():
+            for gf in ('HEAD', 'index'):
+                gp = git_dir / gf
+                if gp.is_file():
+                    try: git_mtime = max(git_mtime, gp.stat().st_mtime_ns)
+                    except OSError: pass
+        if reads == 0 and self._git_cache.get('valid') and self._git_cache.get('mtime') == git_mtime:
+            commit = self._git_cache.get('commit')
+            branch = self._git_cache.get('branch')
+            status = self._git_cache.get('status')
+        else:
+            commit = self._git(root, 'rev-parse', 'HEAD')
+            branch = self._git(root, 'symbolic-ref', '--short', 'HEAD')
+            status = self._git(root, 'status', '--porcelain', '--untracked-files=normal', '--', '.')
+            self._git_cache = {'mtime': git_mtime, 'commit': commit, 'branch': branch, 'status': status, 'valid': True}
         stats={'files':len(self.cache),'filesRead':reads,'cacheHits':len(self.cache)-reads,'durationMs':round((time.perf_counter()-started)*1000,2)}
         self.last_stats=stats
         graph={'schemaVersion':'1.0','project':{'id':project['id'],'name':project['name']},
