@@ -86,6 +86,16 @@ def build_skill_zip():
                 shutil.copy2(script, scripts_dest / script.name)
         print(f"  PASS Synced to {dest_zip.as_posix()}")
 
+    wb_skill = Path.home() / '.workbuddy-ai' / 'skills' / 'threadline'
+    if wb_skill.is_dir():
+        wb_scripts = wb_skill / 'scripts'
+        scripts_src = skill_dir / 'scripts'
+        if wb_scripts.is_dir() and scripts_src.is_dir():
+            for script in scripts_src.glob('*.py'):
+                shutil.copy2(script, wb_scripts / script.name)
+        print(f"  PASS Synced scripts to WorkBuddy skill ({wb_skill.as_posix()})")
+
+
 def update_manifest_sha256():
     print("[4/5] Regenerating top-level MANIFEST.sha256...", flush=True)
     entries = []

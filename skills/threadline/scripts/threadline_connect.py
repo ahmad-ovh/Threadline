@@ -123,10 +123,11 @@ def acquire(args,config,previous):
             raise SetupError('First execution requires --trust-source after reviewing the supplied application.')
         ident=core_manifest(root)
         return root,{**ident,'acquisition':'authorized local source','repository_url':None,'requested_ref':None,'commit':None}
-    repo_candidate=HERE.parents[1]
-    if (repo_candidate/'src/threadline/cli.py').is_file() and (repo_candidate/'runtime-manifest.json').is_file():
-        ident=core_manifest(repo_candidate)
-        return repo_candidate,{**ident,'acquisition':'local repository checkout','repository_url':'https://github.com/ahmad-ovh/Threadline.git','requested_ref':'main','commit':None}
+    if not getattr(args, 'refresh', False) and getattr(args, 'action', '') != 'refresh' and not args.repo:
+        repo_candidate=HERE.parents[1]
+        if (repo_candidate/'src/threadline/cli.py').is_file() and (repo_candidate/'runtime-manifest.json').is_file():
+            ident=core_manifest(repo_candidate)
+            return repo_candidate,{**ident,'acquisition':'local repository checkout','repository_url':'https://github.com/ahmad-ovh/Threadline.git','requested_ref':'main','commit':None}
     repo=args.repo or config.get('repository_url') or 'https://github.com/ahmad-ovh/Threadline.git'
     if not repo and previous:
         root=Path(previous['runtime_root']);ident=core_manifest(root)
@@ -142,9 +143,24 @@ def acquire(args,config,previous):
     root=args.install_root/'releases'/key
     receipt=read_json(root.parent/(key+'.json'))
     if root.exists():
-        if getattr(args, 'refresh', False) or getattr(args, 'action', '') == 'refresh':
+        should_refresh = getattr(args, 'refresh', False) or getattr(args, 'action', '') == 'refresh'
+        if not receipt:
+            should_refresh = True
+        elif not should_refresh and not expected and shutil.which('git'):
+            try:
+                remote_out = run(['git', 'ls-remote', repo, ref], timeout=8).strip()
+                if remote_out:
+                    remote_commit = remote_out.split()[0]
+                    cached_commit = receipt.get('commit')
+                    if remote_commit and cached_commit and remote_commit.lower() != cached_commit.lower():
+                        should_refresh = True
+            except Exception:
+                pass
+        if should_refresh:
+            stop_managed(args.install_root)
             safe_rmtree(root)
             (root.parent/(key+'.json')).unlink(missing_ok=True)
+            args.trust_source = True
         else:
             if not receipt or receipt.get('repository_url')!=repo or receipt.get('requested_ref')!=ref:raise SetupError('Cached checkout has no matching installation receipt. Refusing to guess its identity.')
             ident=core_manifest(root)
@@ -187,6 +203,26 @@ def probe(home,url):
         data=get(url+'/api/projects',token)
         return {'health':health,'projects':data,'token':token}
     except (OSError,ValueError,URLError,HTTPError):return None
+
+def stop_managed(install_root):
+    profile=read_json(Path(install_root)/'connection.json')
+    if not profile:return
+    try:
+        home=Path(profile.get('home',''))
+        url=profile.get('url','')
+        if not home.exists() or not url:return
+        active=probe(home,url)
+        if not active:return
+        managed=read_json(home/'managed-host.json')
+        if not managed or managed.get('url')!=url:return
+        private_write(home/'stop-request.json',{'run_id':managed['run_id']})
+        deadline=time.monotonic()+5
+        while time.monotonic()<deadline:
+            if not probe(home,url):break
+            time.sleep(.2)
+    except Exception:
+        pass
+
 
 def listening(port):
     with socket.socket() as s:
