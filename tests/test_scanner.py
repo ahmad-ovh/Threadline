@@ -69,8 +69,9 @@ class ScannerTests(unittest.TestCase):
         self.put('a.py','x=1');self.put('generated/b.py','x=2');self.put('.threadlineignore','generated/\n');g=self.graph();self.assertFalse(any(n.get('path')=='generated/b.py' for n in g['nodes']))
     @unittest.skipUnless(shutil.which('git'),'Git is optional')
     def test_gitignore_and_commit_provenance(self):
-        subprocess.run(['git','init','-q',str(self.root)],check=True);self.put('.gitignore','ignored.py\n');self.put('ignored.py','private');self.put('a.py','x=1')
-        subprocess.run(['git','-C',str(self.root),'add','.'],check=True);subprocess.run(['git','-C',str(self.root),'-c','user.name=Test','-c','user.email=test@example.invalid','-c','commit.gpgsign=false','commit','-qm','baseline'],check=True)
+        creationflags = subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
+        subprocess.run(['git','init','-q',str(self.root)],check=True,creationflags=creationflags);self.put('.gitignore','ignored.py\n');self.put('ignored.py','private');self.put('a.py','x=1')
+        subprocess.run(['git','-C',str(self.root),'add','.'],check=True,creationflags=creationflags);subprocess.run(['git','-C',str(self.root),'-c','user.name=Test','-c','user.email=test@example.invalid','-c','commit.gpgsign=false','commit','-qm','baseline'],check=True,creationflags=creationflags)
         g=self.graph();self.assertIsNotNone(g['source']['commit']);self.assertFalse(g['source']['dirty']);self.assertFalse(any(n.get('path')=='ignored.py' for n in g['nodes']));self.put('a.py','x=2');g2=self.graph();self.assertTrue(g2['source']['dirty']);self.assertEqual(g2['source']['commit'],g['source']['commit']);self.assertNotEqual(g2['source']['treeHash'],g['source']['treeHash'])
     def test_live_watcher_captures_an_edit(self):
         self.put('a.py','x=1');self.scanner.scan();tracker=Tracker(self.store,.25);tracker.start()

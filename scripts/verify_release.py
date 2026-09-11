@@ -42,12 +42,13 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix='threadline-receiver-') as tmp:
         base=Path(tmp);venv.EnvBuilder(with_pip=True).create(base/'venv')
         python=base/'venv'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')
-        subprocess.run([str(python),'-m','pip','install','--no-index','--no-deps',str(wheel)],check=True,capture_output=True,text=True)
+        creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+        subprocess.run([str(python),'-m','pip','install','--no-index','--no-deps',str(wheel)],check=True,capture_output=True,text=True,creationflags=creationflags)
         print('PASS offline install into a new isolated environment',flush=True)
         env=dict(os.environ);env.pop('PYTHONPATH',None);env.pop('THREADLINE_ROOT',None)
         home=base/'private';log=base/'server.log'
         with log.open('w',encoding='utf-8') as output:
-            proc=subprocess.Popen([str(python),'-m','threadline','--home',str(home),'demo','--no-browser','--port','0'],cwd=tmp,env=env,stdout=output,stderr=subprocess.STDOUT)
+            proc=subprocess.Popen([str(python),'-m','threadline','--home',str(home),'demo','--no-browser','--port','0'],cwd=tmp,env=env,stdout=output,stderr=subprocess.STDOUT,creationflags=creationflags)
         try:
             deadline=time.monotonic()+30;match=None
             while time.monotonic()<deadline:
@@ -71,14 +72,14 @@ def main() -> int:
             print('PASS both game graphs and the complete graph-first renderer served from installed wheel',flush=True)
             source=home/'workspaces/lantern-harbor/src/domain/memory.js'
             source.write_text(source.read_text(encoding='utf-8')+'\n// receiver observation check\n',encoding='utf-8')
-            deadline=time.monotonic()+10
+            deadline=time.monotonic()+15
             while time.monotonic()<deadline:
                 graph=json.loads(get('/api/projects/lantern-harbor/snapshot'))
                 if graph['revision']>=2:break
                 time.sleep(.2)
             if graph['revision']<2:raise RuntimeError('Source observer did not publish a new revision')
             print('PASS real source edit advances retained revision with unchanged viewer',flush=True)
-            run=subprocess.run([str(python),str(root/'skills/threadline/scripts/threadline_cli.py'),'--home',str(home),'projects'],cwd=tmp,env=env,check=True,capture_output=True,text=True)
+            run=subprocess.run([str(python),str(root/'skills/threadline/scripts/threadline_cli.py'),'--home',str(home),'projects'],cwd=tmp,env=env,check=True,capture_output=True,text=True,creationflags=creationflags)
             if len(json.loads(run.stdout)['projects'])!=2:raise RuntimeError('Skill wrapper cannot invoke installed app')
             print('PASS Skill wrapper invokes the installed application',flush=True)
         finally:

@@ -1,6 +1,7 @@
 import copy
 import http.client
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -108,7 +109,7 @@ class HTTPTests(unittest.TestCase):
 class CLITests(unittest.TestCase):
     def setUp(self):self.tmp=tempfile.TemporaryDirectory();self.home=Path(self.tmp.name)/'home'
     def tearDown(self):self.tmp.cleanup()
-    def run_cli(self,*args):return subprocess.run([sys.executable,str(ROOT/'run.py'),'--home',str(self.home),*args],capture_output=True,text=True,timeout=15)
+    def run_cli(self,*args):return subprocess.run([sys.executable,str(ROOT/'run.py'),'--home',str(self.home),*args],capture_output=True,text=True,timeout=15,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
     def test_doctor_no_dependencies(self):
         r=self.run_cli('doctor');self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(json.loads(r.stdout)['runtimeDependencies'],[])
     def test_complete_add_context_checkpoint_export(self):

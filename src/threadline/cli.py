@@ -40,7 +40,7 @@ def parser():
         s.add_argument('--port',type=int,default=7331)
         s.add_argument('--no-browser',action='store_true')
         s.add_argument('--no-watch',action='store_true')
-        s.add_argument('--interval',type=float,default=1.0)
+        s.add_argument('--interval',type=float,default=5.0)
         if name=='serve':
             s.add_argument('--project',help='Optional project directory to register and scan')
             s.add_argument('--id');s.add_argument('--name')
@@ -53,7 +53,7 @@ def parser():
     s=sub.add_parser('scan',help='Capture a stable observed batch; cache unchanged file analysis')
     s.add_argument('project');s.add_argument('--summary',default='Agent requested source scan');s.add_argument('--force',action='store_true')
     s=sub.add_parser('watch',help='Observe registered filesystem projects without opening the viewer')
-    s.add_argument('--interval',type=float,default=1.0)
+    s.add_argument('--interval',type=float,default=5.0)
     s=sub.add_parser('snapshot',help='Read a current or historical graph')
     s.add_argument('project');s.add_argument('--revision',type=int)
     for name in ('publish','patch'):

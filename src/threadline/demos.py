@@ -1,6 +1,7 @@
 """New, explicit example games. No claim to contain THRESHOLD source."""
 from pathlib import Path
 import json
+import os
 import shutil
 import subprocess
 from .model import ContractError
@@ -23,10 +24,11 @@ def setup_demos(store: Store) -> list[dict]:
             # Local Git provenance for the examples. Never configure or commit user repositories.
             try:
                 args=['git','-C',str(directory)]
-                subprocess.run(args+['init','-q'],check=True,capture_output=True,timeout=10)
-                subprocess.run(args+['add','.'],check=True,capture_output=True,timeout=10)
+                creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                subprocess.run(args+['init','-q'],check=True,capture_output=True,timeout=10,creationflags=creationflags)
+                subprocess.run(args+['add','.'],check=True,capture_output=True,timeout=10,creationflags=creationflags)
                 subprocess.run(args+['-c','user.name=Threadline Demo','-c','user.email=demo@example.invalid',
-                                    '-c','commit.gpgsign=false','commit','-qm','Example game baseline'],check=True,capture_output=True,timeout=10)
+                                    '-c','commit.gpgsign=false','commit','-qm','Example game baseline'],check=True,capture_output=True,timeout=10,creationflags=creationflags)
             except (OSError,subprocess.SubprocessError): pass
         project=store.register(ident,name,str(directory),demo=True)
         result=Scanner(store,ident).scan('Playable example baseline',actor='example setup')

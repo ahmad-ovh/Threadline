@@ -65,7 +65,8 @@ def connect_lock(install):
     finally:lock.unlink(missing_ok=True)
 
 def run(argv,cwd=None,timeout=180,env=None):
-    try:p=subprocess.run([str(x) for x in argv],cwd=cwd,env=env,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=timeout)
+    creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
+    try:p=subprocess.run([str(x) for x in argv],cwd=cwd,env=env,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=timeout,creationflags=creationflags)
     except (OSError,subprocess.TimeoutExpired) as exc:raise SetupError(f'Command could not run: {argv[0]} ({type(exc).__name__})') from exc
     if p.returncode:raise SetupError(f'Command failed ({p.returncode}): {Path(str(argv[0])).name}\n{p.stderr[-2000:] or p.stdout[-2000:]}')
     return p.stdout
@@ -201,7 +202,7 @@ def connect(args):
         run_id=uuid.uuid4().hex
         log=data_home/'managed-host.log'
         env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1');env.pop('PYTHONPATH',None)
-        kwargs={'start_new_session':True} if os.name!='nt' else {'creationflags':subprocess.CREATE_NEW_PROCESS_GROUP|subprocess.DETACHED_PROCESS}
+        kwargs={'start_new_session':True} if os.name!='nt' else {'creationflags':subprocess.CREATE_NEW_PROCESS_GROUP|subprocess.DETACHED_PROCESS|subprocess.CREATE_NO_WINDOW}
         with log.open('a',encoding='utf-8') as output:
             proc=subprocess.Popen([sys.executable,str(child),'--runtime',str(root),'--home',str(data_home),'--port',str(args.port),'--interval',str(args.interval),'--run-id',run_id],cwd=str(root),env=env,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.STDOUT,**kwargs)
         deadline=time.monotonic()+args.timeout
@@ -254,7 +255,7 @@ def cli():
         c.add_argument('--name',default=None,help='Project display name')
         c.add_argument('--config',type=Path);c.add_argument('--repo');c.add_argument('--ref');c.add_argument('--expected-commit');c.add_argument('--local-source')
         c.add_argument('--trust-source',action='store_true',help='Explicitly authorize first execution of the reviewed source')
-        c.add_argument('--home',type=Path,default=DEFAULT_HOME);c.add_argument('--port',type=int,default=7331);c.add_argument('--interval',type=float,default=1.0);c.add_argument('--timeout',type=float,default=90);c.add_argument('--no-browser',action='store_true')
+        c.add_argument('--home',type=Path,default=DEFAULT_HOME);c.add_argument('--port',type=int,default=7331);c.add_argument('--interval',type=float,default=5.0);c.add_argument('--timeout',type=float,default=90);c.add_argument('--no-browser',action='store_true')
     sub.add_parser('status');sub.add_parser('stop');sub.add_parser('open',help='Open private session locally; never print its token')
     args=p.parse_args();args.install_root=args.install_root.expanduser().resolve()
     if not args.action: args.action = 'connect'

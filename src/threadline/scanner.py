@@ -129,7 +129,8 @@ class Scanner:
 
     def _git(self, root: Path, *args: str) -> bytes | None:
         try:
-            result = subprocess.run(['git','-C',str(root),*args],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=8,check=False)
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            result = subprocess.run(['git','-C',str(root),*args],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=8,check=False,creationflags=creationflags)
             return result.stdout if result.returncode==0 else None
         except (OSError,subprocess.TimeoutExpired): return None
 
@@ -365,7 +366,7 @@ class Scanner:
             raise RuntimeError('scan retry exhausted')
 
 class Tracker:
-    def __init__(self, store: Store, interval: float = 1.0):
+    def __init__(self, store: Store, interval: float = 5.0):
         self.store=store
         self.interval=max(0.25,interval)
         self.scanners: dict[str,Scanner]={}
