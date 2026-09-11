@@ -53,5 +53,17 @@ Install Threadline once, then import the supplied Skill. Ask WorkBuddy to regist
 ## Stop / restart
 Ctrl+C stops the foreground service. Restart with `threadline serve` using the same home to restore projects and history. The browser reconnects and reloads current revision heads; the event stream is not the durable history store. If the local session is lost, reopen the launch URL. To rotate a token, stop the service, remove only `session.token`, and restart; old cookies then stop authenticating.
 
+## Packaging and releases
+To build the distribution wheel, package the Skill ZIP, regenerate cryptographic manifests in strict dependency order, and verify the release end-to-end:
+```powershell
+py -3 tools/package_release.py
+```
+This runs the full release pipeline:
+1. Builds `dist/threadline_workbench-*.whl`
+2. Updates `runtime-manifest.json`
+3. Packages `dist/threadline.zip`
+4. Regenerates top-level `MANIFEST.sha256`
+5. Performs isolated sandbox verification (`verify_release.py`)
+
 ## Public repository preparation
-Review the MIT license and content. Publish the application source, schemas, Skill, examples, documentation and tests. Do not publish a private `~/.threadline` directory, snapshots of user repositories, credentials, or raw user source. `preview.html` and bundled evidence contain only the newly authored examples. Replace no source files merely to connect another project.
+Review the AGPL-3.0-or-later license and content. Publish the application source, schemas, Skill, examples, documentation and tests. Do not publish a private `~/.threadline` directory, snapshots of user repositories, credentials, or raw user source. `preview.html` and bundled evidence contain only the newly authored examples. Replace no source files merely to connect another project.
