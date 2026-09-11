@@ -6,6 +6,7 @@ It does not generate UI, invoke a model, change game source, or upload code.
 """
 from __future__ import annotations
 import argparse
+import base64
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
@@ -263,16 +264,39 @@ def connect(args):
         run_id=uuid.uuid4().hex
         log=data_home/'managed-host.log'
         env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1');env.pop('PYTHONPATH',None)
-        kwargs={'start_new_session':True} if os.name!='nt' else {'creationflags':subprocess.CREATE_NEW_PROCESS_GROUP|subprocess.DETACHED_PROCESS|subprocess.CREATE_NO_WINDOW}
-        with log.open('a',encoding='utf-8') as output:
-            proc=subprocess.Popen([sys.executable,str(child),'--runtime',str(root),'--home',str(data_home),'--port',str(args.port),'--interval',str(args.interval),'--run-id',run_id],cwd=str(root),env=env,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.STDOUT,**kwargs)
-        deadline=time.monotonic()+args.timeout
-        while time.monotonic()<deadline:
-            active=probe(data_home,url)
-            if active:break
-            if proc.poll() is not None:raise SetupError(f'Local host exited before readiness. Inspect {log}; no live connection is claimed.')
+        spawned_wmi = False
+        if os.name == 'nt':
+            py_exe = Path(sys.executable).with_name('pythonw.exe')
+            if not py_exe.is_file():
+                py_exe = Path(sys.executable)
+            cmd = f'"{py_exe}" "{child}" --runtime "{root}" --home "{data_home}" --port {args.port} --interval {args.interval} --run-id {run_id}'
+            ps_script = f"""
+$proc = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{{CommandLine = '{cmd}'}}
+if ($proc.ReturnValue -eq 0) {{ Write-Output "PID=$($proc.ProcessId)" }}
+"""
+            enc = base64.b64encode(ps_script.encode('utf-16le')).decode('ascii')
+            res = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-EncodedCommand', enc],
+                                 capture_output=True, text=True, **_subprocess_flags())
+            if res.returncode == 0 and 'PID=' in res.stdout:
+                spawned_wmi = True
+
+        if not spawned_wmi:
+            kwargs = {'start_new_session': True} if os.name != 'nt' else {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW}
+            with log.open('a', encoding='utf-8') as output:
+                proc = subprocess.Popen([sys.executable, str(child), '--runtime', str(root), '--home', str(data_home), '--port', str(args.port), '--interval', str(args.interval), '--run-id', run_id],
+                                        cwd=str(root), env=env, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT, **kwargs)
+        else:
+            proc = None
+
+        deadline = time.monotonic() + args.timeout
+        while time.monotonic() < deadline:
+            active = probe(data_home, url)
+            if active: break
+            if proc is not None and proc.poll() is not None:
+                raise SetupError(f'Local host exited before readiness. Inspect {log}; no live connection is claimed.')
             time.sleep(.2)
-        if not active:raise SetupError(f'The local host did not become ready within {args.timeout:g}s. Inspect {log}. It may still be starting; use status before retrying.')
+        if not active:
+            raise SetupError(f'The local host did not become ready within {args.timeout:g}s. Inspect {log}. It may still be starting; use status before retrying.')
     record={**identity,'runtime_root':str(root),'python':sys.executable,'home':str(data_home),'url':url,'project_id':args.id,'project_root':str(project),'connected_at':stamp()}
     private_write(args.install_root/'connection.json',record)
     launch=url+'/#token='+active['token']
@@ -318,7 +342,7 @@ def cli():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--install-root',type=Path,default=DEFAULT_INSTALL,help='Trusted code cache/profile, outside your project')
     sub=p.add_subparsers(dest='action',required=False)
-    for act in ('connect','init'):
+    for act in ('connect','init','reconnect'):
         c=sub.add_parser(act,help='Install once (or reuse), register a source root, start/reuse a loopback host')
         c.add_argument('--project',default=None,help='Target project root (defaults to current working directory)')
         c.add_argument('--id',default=None,help='Unique lowercase project ID (defaults to folder name)')
@@ -333,10 +357,12 @@ def cli():
     args=p.parse_args();args.install_root=args.install_root.expanduser().resolve()
     if not args.action: args.action = 'connect'
     if sys.version_info<(3,10):raise SetupError('Python 3.10+ is required.')
-    if args.action in ('connect','init'):
+    if args.action in ('connect','init','reconnect'):
         args.home=args.home.expanduser().resolve()
         if not 1<=args.port<=65535:raise SetupError('Use a TCP port from 1 through 65535.')
         if not .1<=args.interval<=300:raise SetupError('Observer interval must be between 0.1 and 300 seconds.')
+        if args.action == 'reconnect':
+            stop_managed(args.install_root)
         with connect_lock(args.install_root):return connect(args)
     if args.action=='refresh':
         with connect_lock(args.install_root):return refresh(args)

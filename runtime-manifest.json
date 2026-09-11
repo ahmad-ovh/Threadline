@@ -41,8 +41,8 @@
     "src/threadline/web/map-view.js": "816f87953d81797c67996784fd48cb2d18233f1f0c52fc76d2afbe855bc0c35b",
     "src/threadline/web/style.css": "bb056073646a0e47550e0add6853301f1c779e3abfc0958d370d8f3f9b631599",
     "skills/threadline/scripts/threadline_cli.py": "8f22434723597cc10cec25c72e794b1ee822bf61e0f9d76b705f239deb06062f",
-    "skills/threadline/scripts/threadline_connect.py": "48d25223087482b8019ea867022b7cdfc7646608c7ccff4bbbf99489bb3ba6e6",
-    "skills/threadline/scripts/threadline_host.py": "04282aff1002d98b99903cf75d9b674a39899263601899eecbd5fc834d7184fe",
+    "skills/threadline/scripts/threadline_connect.py": "6e32a5b2c07e462fd535ab2b655b0f00cd669d6ed926a4774c82e333629b165f",
+    "skills/threadline/scripts/threadline_host.py": "0634f6571b61beb75b22a2c3e0016b38a135bc33c3f88cceb75c0454a35d2621",
     "schemas/features.schema.json": "5646f61581c9524b8fc121242c30de4b6d70790d259d1dcab37c79562f30d5d5",
     "schemas/graph.schema.json": "bfa4834012aaf2b18a0d6c65e41e1e1b38643c9b8a870818f968a48e0409fda6",
     "schemas/patch.schema.json": "3d42f69bdd1bed8305c1624039a8cdf557ef6d93daa65cc5ce4df8ea6e44d6f4"

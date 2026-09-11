@@ -11,6 +11,13 @@ from threadline_connect import private_write,core_manifest,stamp,read_json
 def main():
     p=argparse.ArgumentParser();p.add_argument('--runtime',type=Path,required=True);p.add_argument('--home',type=Path,required=True);p.add_argument('--port',type=int,required=True);p.add_argument('--interval',type=float,required=True);p.add_argument('--run-id',required=True);a=p.parse_args()
     root=a.runtime.resolve();home=a.home.resolve();core_manifest(root)
+    log_file = home / 'managed-host.log'
+    try:
+        log_out = log_file.open('a', encoding='utf-8', buffering=1)
+        sys.stdout = log_out
+        sys.stderr = log_out
+    except Exception:
+        pass
     sys.path.insert(0,str(root/'src'))
     from threadline.store import Store
     from threadline.scanner import Tracker
