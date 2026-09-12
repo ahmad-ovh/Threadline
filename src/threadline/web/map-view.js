@@ -34,10 +34,12 @@ class GraphMap{
   this.cy.on('mouseover','node',evt=>this.highlight(evt.target.id()));this.cy.on('mouseout','node',()=>this.highlight(null));
   this.cy.on('mouseover','edge',evt=>evt.target.addClass('highlight'));this.cy.on('mouseout','edge',evt=>evt.target.removeClass('highlight'));
   this.cy.on('pan zoom render position',()=>this.schedule());
+  this.cy.on('pan zoom',()=>this.o.onViewport?.(this.viewport()));
   this.cy.on('dragfree','node',evt=>{this.routeEdges();this.positions.set(evt.target.id(),{...evt.target.position()});this.o.onPositions?.(new Map(this.positions));});
   this.cy.on('zoom',()=>this.o.onZoom?.(this.cy.zoom()));
   this.observer=new ResizeObserver(()=>{this.cy.resize();this.schedule();});this.observer.observe(options.container);
  }
+ clear(){this.projection=null;this.selected=null;this.cy.batch(()=>{this.cy.elements().remove();});for(const [,c] of this.cards)c.remove();this.cards.clear();}
  lookup(id){return this.projection?.nodes.find(n=>n.id===id);}
  render(projection,positions,{fit=false}={}){
   this.projection=projection;this.positions=positions;const ids=new Set(projection.nodes.map(n=>n.id)),edgeIds=new Set(projection.edges.map(e=>e.id));
@@ -65,7 +67,7 @@ class GraphMap{
  sync(){const pan=this.cy.pan(),z=this.cy.zoom();this.layer.style.transform=`translate(${pan.x}px,${pan.y}px) scale(${z})`;for(const n of this.cy.nodes()){const c=this.cards.get(n.id());if(!c)continue;const p=n.position();c.style.left=(p.x-G.W/2)+'px';c.style.top=(p.y-G.H/2)+'px';c.dataset.x=String(p.x);c.dataset.y=String(p.y);}}
  highlight(id){const active=id?this.cy.getElementById(id):null;const related=active?.closedNeighborhood();for(const [nid,c] of this.cards){c.classList.toggle('is-hover',nid===id);c.classList.toggle('is-dim',!!id&&!related?.some(n=>n.id()===nid));}this.cy.edges().forEach(e=>{e.toggleClass('dimmed',!!id&&!related?.some(n=>n.id()===e.id()));e.toggleClass('highlight',!!id&&(e.source().id()===id||e.target().id()===id));});}
  select(id){this.selected=id;for(const [nid,c] of this.cards)c.classList.toggle('is-selected',nid===id);}
- fit(animate=true){if(!this.cy.nodes().length)return;this.cy.resize();const bb=this.cy.nodes().boundingBox({includeLabels:false}),w=this.cy.width(),h=this.cy.height();const top=166,bottom=110,pad=55;const z=Math.max(.12,Math.min(1.08,(w-pad*2)/Math.max(1,bb.w),(h-top-bottom)/Math.max(1,bb.h)));const pan={x:(w-bb.w*z)/2-bb.x1*z,y:top+(h-top-bottom-bb.h*z)/2-bb.y1*z};this.cy.stop();if(animate&&!matchMedia('(prefers-reduced-motion: reduce)').matches)this.cy.animate({zoom:z,pan},{duration:230});else{this.cy.zoom(z);this.cy.pan(pan);}this.schedule();}
+ fit(animate=true){if(!this.cy.nodes().length)return;this.cy.resize();const bb=this.cy.nodes().boundingBox({includeLabels:false}),w=this.cy.width(),h=this.cy.height();const top=166,bottom=110,pad=55;const z=Math.max(.12,Math.min(1.08,(w-pad*2)/Math.max(1,bb.w),(h-top-bottom)/Math.max(1,bb.h)));const pan={x:(w-bb.w*z)/2-bb.x1*z,y:top+(h-top-bottom-bb.h*z)/2-bb.y1*z};this.cy.stop();if(animate&&!matchMedia('(prefers-reduced-motion: reduce)').matches)this.cy.animate({zoom:z,pan},{duration:230});else{this.cy.zoom(z);this.cy.pan(pan);}this.schedule();this.o.onViewport?.({zoom:z,pan:{...pan}});}
  reveal(id){
   const n=this.cy.getElementById(id);if(!n.length)return;this.cy.resize();const p=n.renderedPosition(),z=this.cy.zoom(),w=this.cy.width(),h=this.cy.height();const halfX=G.W*z/2,halfY=G.H*z/2;
   const dx=p.x+halfX>w-24?w-24-(p.x+halfX):p.x-halfX<24?24-(p.x-halfX):0;

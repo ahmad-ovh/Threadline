@@ -83,6 +83,7 @@ class Store:
                 return dict(existing)
             db.execute("INSERT INTO projects VALUES(?,?,?,?,?,?)", (project_id,name,root,mode,int(demo),now()))
             db.commit()
+        self.set_active_project(project_id)
         return self.project(project_id)
 
     def project(self, project_id: str) -> dict:
@@ -98,6 +99,32 @@ class Store:
                (SELECT MAX(created) FROM revisions r WHERE r.project_id=p.id) AS updated
                FROM projects p ORDER BY created, id""").fetchall()
             return [dict(row) for row in rows]
+
+    def active_project(self) -> str | None:
+        path = self.directory / "active-project.json"
+        if path.is_file():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                pid = data.get("project_id")
+                if pid and any(p["id"] == pid for p in self.projects()):
+                    return pid
+            except Exception:
+                pass
+        projs = self.projects()
+        if not projs:
+            return None
+        sorted_projs = sorted(projs, key=lambda p: (p.get("updated") or "", p.get("revision", 0)), reverse=True)
+        return sorted_projs[0]["id"]
+
+    def set_active_project(self, project_id: str):
+        if not project_id:
+            return
+        path = self.directory / "active-project.json"
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"project_id": project_id, "updated_at": now()}), encoding="utf-8")
+        except Exception:
+            pass
 
     def head(self, project_id: str) -> int:
         with self.connection() as db:
@@ -180,6 +207,7 @@ class Store:
                         raise ContractError("Blob hash mismatch")
                     db.execute("INSERT OR IGNORE INTO blobs VALUES(?,?)", (hash_value,zlib.compress(text.encode('utf-8'))))
                 db.commit()
+                self.set_active_project(project_id)
                 return {"revision":revision,"duplicate":False,"changed":True,"delta":delta,"created":stamp}
             except BaseException:
                 db.rollback()

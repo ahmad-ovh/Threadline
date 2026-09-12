@@ -5,7 +5,7 @@ function start(){
 const $=id=>document.getElementById(id),G=ThreadlineGraph;
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const time=v=>{try{return new Date(v).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch{return '';}};
-const S={pid:null,projects:[],graph:null,before:null,history:[],checkpoints:[],nextBefore:null,mode:'modules',scope:'@root',page:0,trail:[],cache:new Map(),projection:null,revision:null,head:0,drawer:null,selection:null,bundles:null,offline:false,stream:null,connected:false,watching:false,tracker:{},ticket:0,loading:false,dirty:false,sourceTicket:0,searchResults:[],searchIndex:0,building:false};
+const S={pid:null,userExplicitPid:null,projects:[],graph:null,before:null,history:[],checkpoints:[],nextBefore:null,mode:'modules',scope:'@root',page:0,trail:[],cache:new Map(),projection:null,revision:null,head:0,drawer:null,selection:null,bundles:null,offline:false,stream:null,connected:false,watching:false,tracker:{},ticket:0,loading:false,dirty:false,sourceTicket:0,searchResults:[],searchIndex:0,building:false};
 let toastTimer;
 function toast(msg){$('toast').textContent=msg;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,4300);}
 function announce(msg){$('announcer').textContent=msg;}
@@ -53,7 +53,7 @@ async function api(url,body,headers={}){
  const token=getStoredToken(),authHeader=token?{'Authorization':'Bearer '+token}:{};
  try{const r=await fetch(url,{method:body!==undefined?'POST':'GET',credentials:'same-origin',headers:{...(body!==undefined?{'Content-Type':'application/json'}:{}),...authHeader,...headers},body:body!==undefined?JSON.stringify(body):undefined,signal:ctl.signal});const data=await r.json();if(!r.ok){if(r.status===401){setStoredToken(null);if(!$('auth-dialog').open)$('auth-dialog').showModal();}throw Error(data.error||`Request failed (${r.status})`);}return data;}finally{clearTimeout(timer);}
 }
-const map=new ThreadlineMap({container:$('cy'),layer:$('node-layer'),onNode:onNode,onEdge:showEdge,onBackground:()=>map.select(null),onZoom:z=>$('zoom-label').textContent=Math.round(z*100)+'%',onPositions:positions=>{const key=cacheKey();S.cache.set(key,{positions,viewport:map.viewport()});}});
+const map=new ThreadlineMap({container:$('cy'),layer:$('node-layer'),onNode:onNode,onEdge:showEdge,onBackground:()=>map.select(null),onZoom:z=>$('zoom-label').textContent=Math.round(z*100)+'%',onPositions:positions=>{const key=cacheKey();const cur=S.cache.get(key);S.cache.set(key,{positions,viewport:cur?.viewport||map.viewport()});},onViewport:viewport=>{const key=cacheKey();const cur=S.cache.get(key);if(cur)S.cache.set(key,{positions:cur.positions,viewport});}});
 function cacheKey(){return [S.pid,S.mode,S.scope,S.page].join('|');}
 function remember(){if(S.projection)S.cache.set(cacheKey(),{positions:new Map(map.positions),viewport:map.viewport()});}
 function resetScope(){S.scope='@root';S.page=0;S.trail=[];closeDrawer();}
@@ -81,24 +81,27 @@ function updateProjectPicker(){
  sel.innerHTML=html;
  if(S.pid)sel.value=S.pid;
 }
-async function selectProject(pid,{navigation=true,syncUrl=true,pushHistory=false}={}){
- if(!pid)return;remember();S.pid=pid;setStoredProject(pid);if(syncUrl)updateUrlProject(pid,pushHistory);
- S.ticket++;S.head=0;S.graph=null;S.before=null;S.revision=null;S.mode='modules';S.building=false;resetScope();error('');
+async function selectProject(pid,{navigation=true,syncUrl=true,pushHistory=false,forceFit=false}={}){
+ if(!pid)return;remember();const changedPid=S.pid&&S.pid!==pid;S.pid=pid;setStoredProject(pid);if(syncUrl)updateUrlProject(pid,pushHistory);
+ S.ticket++;S.head=0;S.graph=null;S.before=null;S.revision=null;S.mode='modules';S.building=false;resetScope();error('');closeDrawer();
+ if(changedPid){forceFit=true;S.cache.delete([pid,'modules','@root',0].join('|'));}
  $('project-select').value=pid;updateProjectDot();updateTitle();
  const p=projectInfo();$('demo-change-button').disabled=false;$('demo-change-button').hidden=S.offline||!p.demo;$('play-button').hidden=S.offline||!p.demo;
- await loadGraph({navigation});
+ await loadGraph({navigation,forceFit});
+ if(!S.offline&&pid){api('/api/active-project',{id:pid}).catch(()=>{});}
 }
 async function listProjects(){
  const data=await api('/api/projects');S.projects=data.projects;S.watching=data.watching;S.tracker=data.tracker||{};
  updateProjectPicker();
- const urlPid=getUrlProject(),storedPid=getStoredProject();let chosen=null;
+ const urlPid=getUrlProject(),storedPid=getStoredProject(),activePid=data.activeProject;let chosen=null;
  if(urlPid&&S.projects.some(p=>p.id===urlPid))chosen=urlPid;
+ else if(activePid&&S.projects.some(p=>p.id===activePid))chosen=activePid;
  else if(storedPid&&S.projects.some(p=>p.id===storedPid))chosen=storedPid;
  else if(S.projects.length)chosen=S.projects[0].id;
- if(chosen)await selectProject(chosen,{navigation:true,syncUrl:chosen===urlPid});
+ if(chosen)await selectProject(chosen,{navigation:true,syncUrl:chosen===urlPid,forceFit:true});
  else{S.pid=null;drawEmpty();}
 }
-async function loadGraph({navigation=false,revision=S.revision}={}){
+async function loadGraph({navigation=false,revision=S.revision,forceFit=false}={}){
  if(!S.pid)return;const ticket=++S.ticket,pid=S.pid;S.loading=true;
  try{
   let graph,events,checkpoints,nextBefore=null;
@@ -111,11 +114,11 @@ async function loadGraph({navigation=false,revision=S.revision}={}){
   if(ticket!==S.ticket||pid!==S.pid)return;
   S.graph=graph;S.revision=revision;S.history=events;S.checkpoints=checkpoints;S.nextBefore=nextBefore;S.head=Math.max(S.head,events[0]?.revision||graph.revision,projectInfo().revision||0);
   if(S.scope!=='@root'&&S.scope!=='@rootfiles'&&!graph.nodes.some(n=>n.id===S.scope)&&!S.before?.nodes.some(n=>n.id===S.scope))resetScope();
-  if(!navigation)remember();draw(navigation);connection();
+  if(!navigation)remember();draw(navigation,forceFit);connection();
   if(changed&&!navigation){const c=G.fileCounts(S.projection.delta);announce(`Revision ${graph.revision}. ${c.added} files added, ${c.changed} changed, ${c.removed} removed.`);}
   if(S.drawer==='history')showHistory();else if(S.drawer==='changes')showChanges();else if(S.drawer==='node'&&S.selection){const sel=G.index(S.graph).nodes.get(S.selection)||G.index(S.before||{nodes:[]}).nodes.get(S.selection);if(sel)showNode(sel);else closeDrawer();}
  }catch(e){if(ticket===S.ticket){error(e.message);drawEmpty();}}
- finally{if(ticket===S.ticket){S.loading=false;if(S.dirty&&!S.revision){S.dirty=false;loadGraph();}}}
+ finally{if(ticket===S.ticket){S.loading=false;if(S.dirty&&!S.revision){S.dirty=false;loadGraph({forceFit});}}}
 }
 function navigationLabel(id){if(id==='@root')return S.mode==='features'?'Features':'Architecture';if(id==='@rootfiles')return 'Entry & assets';const n=S.graph?.nodes.find(n=>n.id===id)||S.before?.nodes.find(n=>n.id===id);return n?G.label(n):id;}
 function go(scope,{push=true,page=0}={}){
@@ -123,12 +126,12 @@ function go(scope,{push=true,page=0}={}){
 }
 function back(){const prev=S.trail.pop();go(prev?.scope||'@root',{push:false,page:prev?.page||0});}
 function onNode(n){if(!n)return;if((n.kind==='module'||n.kind==='feature')){go(n.id);if(n.kind==='feature')showNode(n.base);}else showNode(n.base);}
-function draw(navigation=false){
+function draw(navigation=false,forceFit=false){
  if(!S.graph)return drawEmpty();
- const saved=S.cache.get(cacheKey());S.projection=G.project(S.graph,{scope:S.scope,mode:S.mode,before:S.before,page:S.page});
- if(!S.projection.nodes.length&&S.page){S.page=0;return draw(true);}
- const positions=G.layout(S.projection,saved?.positions||new Map());map.render(S.projection,positions,{fit:navigation&&!saved});if(navigation&&saved)map.restore(saved.viewport);
- S.cache.set(cacheKey(),{positions,viewport:map.viewport()});
+ const key=cacheKey();const saved=forceFit?null:S.cache.get(key);S.projection=G.project(S.graph,{scope:S.scope,mode:S.mode,before:S.before,page:S.page});
+ if(!S.projection.nodes.length&&S.page){S.page=0;return draw(true,forceFit);}
+ const positions=G.layout(S.projection,saved?.positions||new Map());const shouldFit=forceFit||(navigation&&!saved);map.render(S.projection,positions,{fit:shouldFit});if(!shouldFit&&navigation&&saved)map.restore(saved.viewport);
+ S.cache.set(key,{positions,viewport:map.viewport()});
  const g=S.graph,p=projectInfo(),v=S.projection;updateProjectDot();updateTitle();
  document.documentElement.dataset.revision=String(g.revision||0);document.documentElement.dataset.project=S.pid;document.documentElement.dataset.scope=S.scope;
  $('scope-title').textContent=navigationLabel(S.scope);$('scope-count').textContent=String(v.total);
@@ -307,21 +310,41 @@ function openBundle(data){
 }
 let refreshingProjects=false;
 function stateUpdate(data){
+ if(!data)return;
+ let projectsChanged=false;
+ if(data.projects?.length){
+  for(const p of data.projects){
+   const existing=S.projects.find(x=>x.id===p.id);
+   if(!existing){
+    S.projects.push({...p});
+    projectsChanged=true;
+   }else if(existing.revision!==p.revision||existing.name!==p.name||existing.checkpointCount!==p.checkpointCount){
+    Object.assign(existing,p);
+    projectsChanged=true;
+   }
+  }
+ }
+ if(projectsChanged||!$('project-select').options.length||$('project-select').options[0]?.textContent==='Connecting…'){
+  updateProjectPicker();
+ }
+
  if(data.projects?.some(p=>!S.projects.some(old=>old.id===p.id))&&!refreshingProjects){
   refreshingProjects=true;api('/api/projects').then(r=>{
-   const current=S.pid;S.projects=r.projects;updateProjectPicker();
-   const urlPid=getUrlProject();
-   if(urlPid&&S.projects.some(p=>p.id===urlPid)&&urlPid!==current){
-    selectProject(urlPid,{navigation:true});
-   }else if(current&&S.projects.some(p=>p.id===current)){
-    $('project-select').value=current;
-   }else if(S.projects.length){
-    selectProject(S.projects[0].id,{navigation:true});
-   }
+   S.projects=r.projects;updateProjectPicker();
   }).catch(e=>error(e.message)).finally(()=>refreshingProjects=false);
  }
 
- S.connected=true;S.tracker=data.tracker||{};S.watching=data.watching;connection();const p=data.projects?.find(p=>p.id===S.pid);if(!p)return;
+ S.connected=true;S.tracker=data.tracker||{};S.watching=data.watching;connection();
+
+ if(data.activeProject&&data.activeProject!==S.pid){
+  const urlPid=getUrlProject();
+  if((!urlPid||urlPid===data.activeProject)&&(!S.userExplicitPid||S.userExplicitPid===data.activeProject||!S.pid)){
+   selectProject(data.activeProject,{navigation:true,syncUrl:true,forceFit:true});
+   return;
+  }
+ }
+
+ const p=data.projects?.find(p=>p.id===S.pid);if(!p)return;
  const job=data.demo?.[S.pid];if(job){S.building=job.running;$('demo-change-button').disabled=!!job.running;$('demo-change-button').innerHTML=job.running?'<span>◌</span> Editing example… <small>SCRIPTED</small>':'<span>▷</span> Watch a change <small>EXAMPLE</small>';if(job.running){$('event-summary').textContent=job.phase+' · scripted';}if(job.error)error(job.error);}S.head=p.revision;const local=projectInfo();local.revision=p.revision;
  if(S.revision){$('revision-text').textContent=`Viewing revision ${S.revision} · retained graph. Latest is r${S.head}.`;return;}
  if(p.revision!==S.graph?.revision){if(S.loading)S.dirty=true;else loadGraph();}
@@ -335,14 +358,23 @@ async function authenticate(token){setStoredToken(token);await api('/api/session
 function wire(){
  const onProjectChange=caught(async()=>{
   const val=$('project-select').value;
-  if(val&&val!==S.pid)await selectProject(val,{navigation:true,syncUrl:true,pushHistory:true});
+  if(val&&val!==S.pid){
+   S.userExplicitPid=val;
+   await selectProject(val,{navigation:true,syncUrl:true,pushHistory:true,forceFit:true});
+  }
  });
  $('project-select').onchange=onProjectChange;
  $('project-select').oninput=onProjectChange;
  window.addEventListener('popstate',()=>{
   const urlPid=getUrlProject();
   if(urlPid&&urlPid!==S.pid&&S.projects.some(p=>p.id===urlPid)){
-   selectProject(urlPid,{navigation:true,syncUrl:false});
+   S.userExplicitPid=urlPid;
+   selectProject(urlPid,{navigation:true,syncUrl:false,forceFit:true});
+  }
+ });
+ window.addEventListener('storage',e=>{
+  if(e.key==='threadline_project'&&e.newValue&&e.newValue!==S.pid&&S.projects.some(p=>p.id===e.newValue)){
+   selectProject(e.newValue,{navigation:true,syncUrl:false,forceFit:true});
   }
  });
  $('home-button').onclick=e=>{e.preventDefault();S.trail=[];go('@root',{push:false});};$('back-button').onclick=back;$('zoom-in').onclick=()=>map.zoom(1.2);$('zoom-out').onclick=()=>map.zoom(1/1.2);$('fit-button').onclick=$('zoom-label').onclick=()=>map.fit();

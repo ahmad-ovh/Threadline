@@ -46,6 +46,7 @@ def main() -> int:
         subprocess.run([str(python),'-m','pip','install','--no-index','--no-deps',str(wheel)],check=True,capture_output=True,text=True,creationflags=creationflags)
         print('PASS offline install into a new isolated environment',flush=True)
         env=dict(os.environ);env.pop('PYTHONPATH',None);env.pop('THREADLINE_ROOT',None)
+        env['THREADLINE_INSTALL_ROOT']=str(base/'isolated-tools')
         home=base/'private';log=base/'server.log'
         with log.open('w',encoding='utf-8') as output:
             proc=subprocess.Popen([str(python),'-m','threadline','--home',str(home),'demo','--no-browser','--port','0'],cwd=tmp,env=env,stdout=output,stderr=subprocess.STDOUT,creationflags=creationflags)

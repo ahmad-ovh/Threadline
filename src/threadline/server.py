@@ -178,7 +178,9 @@ class Handler(BaseHTTPRequestHandler):
         val=lambda key,default=None:q.get(key,[default])[0]
         integer=lambda key,default=None:int(val(key)) if val(key) is not None else default
         if path=='/api/projects':
-            self._json({'projects':store.projects(),'watching':bool(self.server.tracker.thread and self.server.tracker.thread.is_alive()),'tracker':self.server.tracker.status,'demo':dict(self.server.demo_status),'version':__version__});return
+            self._json({'projects':store.projects(),'activeProject':store.active_project(),'watching':bool(self.server.tracker.thread and self.server.tracker.thread.is_alive()),'tracker':self.server.tracker.status,'demo':dict(self.server.demo_status),'version':__version__});return
+        if path=='/api/active-project':
+            self._json({'activeProject':store.active_project()});return
         pid,action=self._route(path)
         rev=integer('revision')
         if action=='snapshot': self._json(store.snapshot(pid,rev))
@@ -197,6 +199,12 @@ class Handler(BaseHTTPRequestHandler):
         store=self.server.store
         if path=='/api/session':
             self._json({'ok':True,'version':__version__},headers={'Set-Cookie':f'threadline_session={self.server.token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000'})
+            return
+        if path=='/api/active-project':
+            pid=body.get('id','')
+            if pid:
+                store.set_active_project(pid)
+            self._json({'ok':True,'activeProject':store.active_project()})
             return
         if path=='/api/projects':
             if body.get('mode','published')!='published':
@@ -305,7 +313,8 @@ class Handler(BaseHTTPRequestHandler):
             last=None;last_heartbeat=0
             while not self.server.stopping.is_set():
                 projects=self.server.store.projects()
-                state={'projects':[{'id':p['id'],'revision':p['revision'],'checkpointCount':len(self.server.store.checkpoints(p['id']))} for p in projects],
+                state={'projects':[{'id':p['id'],'name':p.get('name') or p['id'],'revision':p['revision'],'demo':bool(p.get('demo')),'checkpointCount':len(self.server.store.checkpoints(p['id']))} for p in projects],
+                       'activeProject':self.server.store.active_project(),
                        'tracker':{pid:{'ok':s.get('ok'),'error':s.get('error')} for pid,s in self.server.tracker.status.items()},
                        'watching':bool(self.server.tracker.thread and self.server.tracker.thread.is_alive()),'demo':dict(self.server.demo_status)}
                 signature=digest(state)

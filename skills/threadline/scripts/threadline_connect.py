@@ -299,6 +299,11 @@ if ($proc.ReturnValue -eq 0) {{ Write-Output "PID=$($proc.ProcessId)" }}
             raise SetupError(f'The local host did not become ready within {args.timeout:g}s. Inspect {log}. It may still be starting; use status before retrying.')
     record={**identity,'runtime_root':str(root),'python':sys.executable,'home':str(data_home),'url':url,'project_id':args.id,'project_root':str(project),'connected_at':stamp()}
     private_write(args.install_root/'connection.json',record)
+    private_write(data_home/'active-project.json',{'project_id':args.id,'updated_at':stamp()})
+    try:
+        req=Request(f'{url}/api/active-project',data=json.dumps({'id':args.id}).encode('utf-8'),headers={'Content-Type':'application/json','Authorization':'Bearer '+active['token']})
+        OPENER.open(req,timeout=2)
+    except Exception:pass
     launch=url+f'/?project={args.id}#token='+active['token']
     # Secret lives locally. JSON stdout deliberately contains no bearer/fragment.
     private_write(data_home/'launch-url.txt',launch+'\n',text=True)
