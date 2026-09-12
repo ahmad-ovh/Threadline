@@ -152,7 +152,8 @@ class Handler(BaseHTTPRequestHandler):
             if not file.resolve().is_relative_to(WEB.resolve()) or file.is_symlink() or not file.is_file():
                 raise MissingError('Asset')
             mime={'.js':'application/javascript','.css':'text/css','.html':'text/html','.json':'application/json','.svg':'image/svg+xml'}.get(file.suffix.lower()) or mimetypes.guess_type(file.name)[0] or 'application/octet-stream'
-            self._send(file.read_bytes(),mime=mime+'; charset=utf-8' if mime.startswith(('text/','application/javascript')) else mime)
+            headers={'Set-Cookie':f'threadline_session={self.server.token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000'} if path in ('/','/index.html') else None
+            self._send(file.read_bytes(),mime=mime+'; charset=utf-8' if mime.startswith(('text/','application/javascript')) else mime,headers=headers)
         except MissingError as exc: self._json({'error':str(exc)},404)
         except ConflictError as exc: self._json({'error':str(exc),'type':'revision_conflict'},409)
         except (ContractError,ValueError,TypeError) as exc:

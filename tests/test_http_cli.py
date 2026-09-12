@@ -53,7 +53,7 @@ class HTTPTests(unittest.TestCase):
     def test_query_token_authorized(self):
         self.assertEqual(self.req('/api/projects?token='+self.token,auth=False)[0],200)
     def test_html_never_embeds_local_token(self):
-        status,_,body=self.req('/',auth=False);self.assertEqual(status,200);self.assertNotIn(self.token.encode(),body)
+        status,headers,body=self.req('/',auth=False);self.assertEqual(status,200);self.assertNotIn(self.token.encode(),body);self.assertIn('threadline_session=',headers.get('Set-Cookie',''))
     def test_path_traversal_rejected(self):self.assertEqual(self.req('/%2e%2e/run.py')[0],404)
     def test_source_read_is_snapshot_scoped(self):
         status,_,body=self.req('/api/projects/local/source?path=main.py&revision=1');self.assertEqual(status,200);self.assertIn('def hello',json.loads(body)['text'])
