@@ -159,7 +159,7 @@ class Handler(BaseHTTPRequestHandler):
         except (ContractError,ValueError,TypeError) as exc:
             self.close_connection=True
             self._json({'error':str(exc),'type':'invalid_request'},400)
-        except (BrokenPipeError,ConnectionResetError,socket.timeout):
+        except (ConnectionError,socket.timeout):
             self.close_connection=True
         except Exception:
             self.close_connection=True

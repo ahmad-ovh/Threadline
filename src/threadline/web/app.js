@@ -16,6 +16,38 @@ const bundle=()=>S.bundles?.find(b=>b.snapshot.project.id===S.pid);
 const route=(action,query='')=>`/api/projects/${encodeURIComponent(S.pid)}/${action}${query?'?'+query:''}`;
 function getStoredToken(){try{return localStorage.getItem('threadline_token')||'';}catch{return '';}}
 function setStoredToken(token){try{if(token)localStorage.setItem('threadline_token',token);else localStorage.removeItem('threadline_token');}catch{}}
+function getStoredProject(){try{return localStorage.getItem('threadline_project')||'';}catch{return '';}}
+function setStoredProject(pid){try{if(pid)localStorage.setItem('threadline_project',pid);else localStorage.removeItem('threadline_project');}catch{}}
+function getUrlProject(){
+ try{
+  const sp=new URLSearchParams(location.search);
+  if(sp.has('project'))return sp.get('project')||'';
+  const hp=new URLSearchParams(location.hash.slice(1));
+  if(hp.has('project'))return hp.get('project')||'';
+ }catch{}
+ return '';
+}
+function updateUrlProject(pid,push=false){
+ try{
+  const u=new URL(location.href);
+  if(pid)u.searchParams.set('project',pid);
+  else u.searchParams.delete('project');
+  const target=u.pathname+u.search+u.hash;
+  if(push)history.pushState(null,'',target);
+  else history.replaceState(null,'',target);
+ }catch{}
+}
+function updateProjectDot(){
+ const dot=document.querySelector('.project-dot');
+ if(!dot)return;
+ const p=projectInfo();
+ dot.className='project-dot'+(p.demo?' demo':p.mode==='published'?' published':S.watching?' live':'');
+ dot.title=p.name?(p.name+(p.demo?' (Example)':p.revision?' (r'+p.revision+')':'')):'';
+}
+function updateTitle(){
+ const p=projectInfo();
+ document.title=(p.name?p.name+' · ':'')+'Threadline Live Map';
+}
 async function api(url,body,headers={}){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),15000);
  const token=getStoredToken(),authHeader=token?{'Authorization':'Bearer '+token}:{};
@@ -32,13 +64,40 @@ function connection(){
  $('connection').className='connection '+cls;$('connection').innerHTML='<i></i>'+h(label);$('connection').title=status?.error||'An accepted observation is one consistent source batch, not every keystroke.';
  $('event-activity').className='activity-dot '+(S.building?'busy':S.offline?'offline':cls==='error'?'error':'');
  if(status&&!status.ok&&!S.offline)error('The latest scan failed. This is the last good map: '+status.error);else if($('error-banner').textContent.startsWith('The latest scan failed.'))error('');
+ updateProjectDot();
+}
+function updateProjectPicker(){
+ const sel=$('project-select');
+ if(!S.projects.length){sel.innerHTML='<option value="">No codebase connected</option>';return;}
+ const workspaces=S.projects.filter(p=>!p.demo);
+ const demos=S.projects.filter(p=>p.demo);
+ const opt=p=>`<option value="${h(p.id)}">${h(p.name)}${p.revision?' (r'+p.revision+')':''}</option>`;
+ let html='';
+ if(workspaces.length&&demos.length){
+  html=`<optgroup label="Projects">${workspaces.map(opt).join('')}</optgroup><optgroup label="Examples">${demos.map(opt).join('')}</optgroup>`;
+ }else{
+  html=S.projects.map(opt).join('');
+ }
+ sel.innerHTML=html;
+ if(S.pid)sel.value=S.pid;
+}
+async function selectProject(pid,{navigation=true,syncUrl=true,pushHistory=false}={}){
+ if(!pid)return;remember();S.pid=pid;setStoredProject(pid);if(syncUrl)updateUrlProject(pid,pushHistory);
+ S.ticket++;S.head=0;S.graph=null;S.before=null;S.revision=null;S.mode='modules';S.building=false;resetScope();error('');
+ $('project-select').value=pid;updateProjectDot();updateTitle();
+ const p=projectInfo();$('demo-change-button').disabled=false;$('demo-change-button').hidden=S.offline||!p.demo;$('play-button').hidden=S.offline||!p.demo;
+ await loadGraph({navigation});
 }
 async function listProjects(){
  const data=await api('/api/projects');S.projects=data.projects;S.watching=data.watching;S.tracker=data.tracker||{};
- updateProjectPicker();if(!S.pid||!S.projects.some(p=>p.id===S.pid))S.pid=S.projects[0]?.id||null;
- $('project-select').value=S.pid||'';if(S.pid)await loadGraph({navigation:true});else drawEmpty();
+ updateProjectPicker();
+ const urlPid=getUrlProject(),storedPid=getStoredProject();let chosen=null;
+ if(urlPid&&S.projects.some(p=>p.id===urlPid))chosen=urlPid;
+ else if(storedPid&&S.projects.some(p=>p.id===storedPid))chosen=storedPid;
+ else if(S.projects.length)chosen=S.projects[0].id;
+ if(chosen)await selectProject(chosen,{navigation:true,syncUrl:chosen===urlPid});
+ else{S.pid=null;drawEmpty();}
 }
-function updateProjectPicker(){$('project-select').innerHTML=S.projects.map(p=>`<option value="${h(p.id)}">${h(p.name)}</option>`).join('')||'<option>No codebase connected</option>';}
 async function loadGraph({navigation=false,revision=S.revision}={}){
  if(!S.pid)return;const ticket=++S.ticket,pid=S.pid;S.loading=true;
  try{
@@ -55,7 +114,7 @@ async function loadGraph({navigation=false,revision=S.revision}={}){
   if(!navigation)remember();draw(navigation);connection();
   if(changed&&!navigation){const c=G.fileCounts(S.projection.delta);announce(`Revision ${graph.revision}. ${c.added} files added, ${c.changed} changed, ${c.removed} removed.`);}
   if(S.drawer==='history')showHistory();else if(S.drawer==='changes')showChanges();else if(S.drawer==='node'&&S.selection){const sel=G.index(S.graph).nodes.get(S.selection)||G.index(S.before||{nodes:[]}).nodes.get(S.selection);if(sel)showNode(sel);else closeDrawer();}
- }catch(e){if(ticket===S.ticket)error(e.message);}
+ }catch(e){if(ticket===S.ticket){error(e.message);drawEmpty();}}
  finally{if(ticket===S.ticket){S.loading=false;if(S.dirty&&!S.revision){S.dirty=false;loadGraph();}}}
 }
 function navigationLabel(id){if(id==='@root')return S.mode==='features'?'Features':'Architecture';if(id==='@rootfiles')return 'Entry & assets';const n=S.graph?.nodes.find(n=>n.id===id)||S.before?.nodes.find(n=>n.id===id);return n?G.label(n):id;}
@@ -70,7 +129,7 @@ function draw(navigation=false){
  if(!S.projection.nodes.length&&S.page){S.page=0;return draw(true);}
  const positions=G.layout(S.projection,saved?.positions||new Map());map.render(S.projection,positions,{fit:navigation&&!saved});if(navigation&&saved)map.restore(saved.viewport);
  S.cache.set(cacheKey(),{positions,viewport:map.viewport()});
- const g=S.graph,p=projectInfo(),v=S.projection;
+ const g=S.graph,p=projectInfo(),v=S.projection;updateProjectDot();updateTitle();
  document.documentElement.dataset.revision=String(g.revision||0);document.documentElement.dataset.project=S.pid;document.documentElement.dataset.scope=S.scope;
  $('scope-title').textContent=navigationLabel(S.scope);$('scope-count').textContent=String(v.total);
  $('scope-caption').textContent=S.scope==='@root'?(S.mode==='features'?'Follow a behavior to the code behind it.':'A live map of what is being built.'):(S.scope.startsWith('feature:')?'Supporting implementation · dashed cards keep the surrounding architecture in view.':'Inside '+navigationLabel(S.scope)+' · connected components stay in context.');
@@ -94,7 +153,14 @@ function statusbar(){
  $('source-identity').textContent=(S.graph.source?.commit?.slice(0,7)||'working tree')+' / '+(S.graph.source?.treeHash?.slice(0,8)||'published');
  $('source-identity').title='Source state identity. Source references are not runtime proof.';
 }
-function drawEmpty(){S.projection={nodes:[],edges:[]};map.render(S.projection,new Map());$('graph-empty').hidden=false;$('scope-title').textContent='Your code, connected.';$('scope-count').textContent='0';$('scope-caption').textContent='A stable viewer. A living codebase.';connection();}
+function drawEmpty(){
+ S.projection={nodes:[],edges:[]};map.render(S.projection,new Map());$('graph-empty').hidden=false;
+ const p=projectInfo();
+ $('scope-title').textContent=p.name||'Your code, connected.';
+ $('scope-count').textContent='0';
+ $('scope-caption').textContent=p.id?'Waiting for first source observation…':'A stable viewer. A living codebase.';
+ connection();updateProjectDot();updateTitle();
+}
 function drawer(title,kicker,type){S.drawer=type;$('inspector').hidden=false;$('drawer-title').textContent=title;$('drawer-kicker').textContent=kicker;$('drawer-body').innerHTML='';return $('drawer-body');}
 function closeDrawer(){S.drawer=null;S.selection=null;S.sourceTicket++;$('inspector').hidden=true;map.select(null);}
 function para(parent,text,cls=''){const p=document.createElement('p');p.textContent=text;if(cls)p.className=cls;parent.append(p);return p;}
@@ -185,12 +251,28 @@ async function saveExport(){const data=S.offline?bundle():await api(route('expor
 function openBundle(data){
  const bundles=data.format==='threadline-workspace'?data.bundles:data.snapshot?[data]:[{format:'threadline-bundle',snapshot:data,history:[],checkpoints:[]}];if(!Array.isArray(bundles)||!bundles.length)throw Error('No snapshots in this data file.');for(const b of bundles){G.validate(b.snapshot);for(const g of Object.values(b.snapshots||{}))G.validate(g);}
  const ids=new Set();for(const b of bundles){if(ids.has(b.snapshot.project.id))throw Error('Duplicate project IDs.');ids.add(b.snapshot.project.id);}
- S.ticket++;S.stream?.close();S.stream=null;S.connected=false;S.offline=true;S.bundles=bundles;S.projects=bundles.map(b=>({...b.snapshot.project,revision:b.snapshot.revision,mode:'published'}));S.pid=S.projects[0].id;S.head=0;S.graph=null;S.before=null;S.revision=null;resetScope();S.cache.clear();updateProjectPicker();$('project-select').value=S.pid;error('');loadGraph({navigation:true});
+ S.ticket++;S.stream?.close();S.stream=null;S.connected=false;S.offline=true;S.bundles=bundles;S.projects=bundles.map(b=>({...b.snapshot.project,revision:b.snapshot.revision,mode:'published'}));
+ updateProjectPicker();
+ const urlPid=getUrlProject(),storedPid=getStoredProject();let targetPid=null;
+ if(urlPid&&S.projects.some(p=>p.id===urlPid))targetPid=urlPid;
+ else if(storedPid&&S.projects.some(p=>p.id===storedPid))targetPid=storedPid;
+ else targetPid=S.projects[0].id;
+ selectProject(targetPid,{navigation:true});
 }
 let refreshingProjects=false;
 function stateUpdate(data){
  if(data.projects?.some(p=>!S.projects.some(old=>old.id===p.id))&&!refreshingProjects){
-  refreshingProjects=true;api('/api/projects').then(r=>{const current=S.pid;S.projects=r.projects;updateProjectPicker();$('project-select').value=current||S.projects[0]?.id||'';if(!current&&S.projects.length){S.pid=S.projects[0].id;loadGraph({navigation:true});}}).catch(e=>error(e.message)).finally(()=>refreshingProjects=false);
+  refreshingProjects=true;api('/api/projects').then(r=>{
+   const current=S.pid;S.projects=r.projects;updateProjectPicker();
+   const urlPid=getUrlProject();
+   if(urlPid&&S.projects.some(p=>p.id===urlPid)&&urlPid!==current){
+    selectProject(urlPid,{navigation:true});
+   }else if(current&&S.projects.some(p=>p.id===current)){
+    $('project-select').value=current;
+   }else if(S.projects.length){
+    selectProject(S.projects[0].id,{navigation:true});
+   }
+  }).catch(e=>error(e.message)).finally(()=>refreshingProjects=false);
  }
 
  S.connected=true;S.tracker=data.tracker||{};S.watching=data.watching;connection();const p=data.projects?.find(p=>p.id===S.pid);if(!p)return;
@@ -205,7 +287,18 @@ function connectStream(){
 }
 async function authenticate(token){setStoredToken(token);await api('/api/session',{},{'Authorization':'Bearer '+token});try{history.replaceState(null,'',location.pathname+location.search);}catch{}$('auth-dialog').close();await listProjects();connectStream();}
 function wire(){
- $('project-select').onchange=caught(async()=>{remember();S.pid=$('project-select').value;S.ticket++;S.head=0;S.graph=null;S.before=null;S.revision=null;S.mode='modules';S.building=false;resetScope();$('demo-change-button').disabled=false;await loadGraph({navigation:true});});
+ const onProjectChange=caught(async()=>{
+  const val=$('project-select').value;
+  if(val&&val!==S.pid)await selectProject(val,{navigation:true,syncUrl:true,pushHistory:true});
+ });
+ $('project-select').onchange=onProjectChange;
+ $('project-select').oninput=onProjectChange;
+ window.addEventListener('popstate',()=>{
+  const urlPid=getUrlProject();
+  if(urlPid&&urlPid!==S.pid&&S.projects.some(p=>p.id===urlPid)){
+   selectProject(urlPid,{navigation:true,syncUrl:false});
+  }
+ });
  $('home-button').onclick=e=>{e.preventDefault();S.trail=[];go('@root',{push:false});};$('back-button').onclick=back;$('zoom-in').onclick=()=>map.zoom(1.2);$('zoom-out').onclick=()=>map.zoom(1/1.2);$('fit-button').onclick=$('zoom-label').onclick=()=>map.fit();
  for(const m of ['modules','features'])$('mode-'+m).onclick=()=>{remember();S.mode=m;resetScope();draw(true);};
  $('previous-page').onclick=()=>go(S.scope,{push:false,page:S.page-1});$('next-page').onclick=()=>go(S.scope,{push:false,page:S.page+1});

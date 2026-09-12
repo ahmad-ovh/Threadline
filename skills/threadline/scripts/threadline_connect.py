@@ -299,14 +299,15 @@ if ($proc.ReturnValue -eq 0) {{ Write-Output "PID=$($proc.ProcessId)" }}
             raise SetupError(f'The local host did not become ready within {args.timeout:g}s. Inspect {log}. It may still be starting; use status before retrying.')
     record={**identity,'runtime_root':str(root),'python':sys.executable,'home':str(data_home),'url':url,'project_id':args.id,'project_root':str(project),'connected_at':stamp()}
     private_write(args.install_root/'connection.json',record)
-    launch=url+'/#token='+active['token']
+    launch=url+f'/?project={args.id}#token='+active['token']
     # Secret lives locally. JSON stdout deliberately contains no bearer/fragment.
     private_write(data_home/'launch-url.txt',launch+'\n',text=True)
     from html import escape
     private_write(data_home/'open-viewer.html','<!doctype html><meta charset="utf-8"><title>Open your local Threadline viewer</title><h1>Local Threadline viewer</h1><p>This file contains your private local session link. Do not upload or share it.</p><p><a href="'+escape(launch,quote=True)+'">Open the live graph</a></p>',text=True)
     if not args.no_browser:webbrowser.open(launch)
     p=next((p for p in active['projects']['projects'] if p['id']==args.id),registered.get('project',{}))
-    return {'ok':True,'viewer_url':url,'version':identity['version'],'runtime_root':str(root),'source_commit':identity.get('commit'),'requested_ref':identity.get('requested_ref'),'home':str(data_home),'project_id':args.id,'project_revision':p.get('revision'),'watching':bool(active['projects'].get('watching')),'private_open_file':str(data_home/'open-viewer.html'),'connection_profile':str(args.install_root/'connection.json'),'reused_installation':identity.get('reused_installation',False),'browser_open_requested':not args.no_browser,'note':'Ready on loopback. Native WorkBuddy execution and actual browser behavior must still be verified on this machine.'}
+    viewer_url=f"{url}/?project={args.id}"
+    return {'ok':True,'viewer_url':viewer_url,'version':identity['version'],'runtime_root':str(root),'source_commit':identity.get('commit'),'requested_ref':identity.get('requested_ref'),'home':str(data_home),'project_id':args.id,'project_revision':p.get('revision'),'watching':bool(active['projects'].get('watching')),'private_open_file':str(data_home/'open-viewer.html'),'connection_profile':str(args.install_root/'connection.json'),'reused_installation':identity.get('reused_installation',False),'browser_open_requested':not args.no_browser,'note':'Ready on loopback. Native WorkBuddy execution and actual browser behavior must still be verified on this machine.'}
 
 def status(args):
     profile=read_json(args.install_root/'connection.json')
@@ -371,8 +372,10 @@ def cli():
     state=status(args)
     if not state['running']:raise SetupError(state['reason'])
     profile=read_json(args.install_root/'connection.json');token=(Path(profile['home'])/'session.token').read_text().strip()
-    webbrowser.open(profile['url']+'/#token='+token)
-    return {'ok':True,'browser_open_requested':True,'url':profile['url'],'note':'Opening was requested; this does not certify the browser page loaded.'}
+    pid=profile.get('project_id','')
+    open_url=profile['url']+(f'/?project={pid}' if pid else '')+'#token='+token
+    webbrowser.open(open_url)
+    return {'ok':True,'browser_open_requested':True,'url':profile['url']+(f'/?project={pid}' if pid else ''),'note':'Opening was requested; this does not certify the browser page loaded.'}
 
 if __name__=='__main__':
     try:result=cli();print(json.dumps(result,indent=2));sys.exit(0 if result.get('ok') else 1)
