@@ -218,7 +218,46 @@ python <SKILL_DIR>/scripts/threadline_cli.py scan <PROJECT_ID> --summary "Reconc
 
 ---
 
-## 6. Failure Handling & Resilience
+## 6. Proactive Pipeline & Feature Suggestions (`suggest`)
+
+As WorkBuddy builds or refactors software, it should actively analyze architectural gaps and propose high-value pipeline enhancements and features to improve developer velocity, reliability, and code quality.
+
+### When to Propose Suggestions:
+Identify opportunities as you build, such as:
+- **CI/CD & Testing:** Automated test suites, test runners, GitHub Actions workflows, regression suites.
+- **Diagnostics & Telemetry:** Health check endpoints, structured logging, error boundary handlers, performance metrics.
+- **Security & Resilience:** Rate limiters, authentication middleware, input validation, CSRF/CORS guards.
+- **Data & Caching:** In-memory caching, query memoization, database connection pooling.
+
+### Publishing a Suggestion:
+Use `threadline_cli.py suggest` to publish a proposed suggestion connected directly to its target architectural component:
+
+```sh
+python <SKILL_DIR>/scripts/threadline_cli.py suggest <PROJECT_ID> \
+  --id "<UNIQUE_SLUG_ID>" \
+  --name "<PROPOSED_FEATURE_NAME>" \
+  --target "<TARGET_COMPONENT_OR_MODULE>" \
+  --description "<BRIEF_SUMMARY>" \
+  --rationale "<HOW_THIS_IMPROVES_THE_SYSTEM_AND_FOLLOWS_CURRENT_DIRECTION>" \
+  --prompt "<ACTIONABLE_PROMPT_FOR_WORKBUDDY_TO_IMPLEMENT_IT>"
+```
+
+### Prompt Guidelines:
+- The `--prompt` should be concise, structured, and immediately actionable for an AI agent.
+- Clearly state what files to create or edit, the technical approach, and the verification step.
+- Example:
+  ```text
+  Add an API rate limiter to protect backend endpoints. Create src/middleware/rate_limit.js using an in-memory token bucket (60 req/min per IP), integrate it into the main Express router in src/routes.js, and add unit tests in tests/rate_limit.test.js.
+  ```
+
+### What Happens in the Viewer:
+- The suggestion appears on the live architecture map as a **greyed-out, dashed card** with a `💡 AI SUGGESTION` header and `PROPOSED` badge.
+- A **dashed arrow link** visually connects it to its target architecture component.
+- Clicking the suggestion node opens the details drawer showing its description, architectural improvement rationale, and a **"📋 Copy Prompt for WorkBuddy"** button. The user can copy the prompt with one click and ask WorkBuddy to implement the feature!
+
+---
+
+## 7. Failure Handling & Resilience
 
 Threadline is an observability and visualization layer. **A Threadline failure must never corrupt or block the user's actual project work.**
 
@@ -232,7 +271,7 @@ If a Threadline command fails:
 
 ---
 
-## 7. Handoff & Shutdown
+## 8. Handoff & Shutdown
 
 ### Export Portable Architecture Map:
 Generates a standalone, offline HTML architecture map:
