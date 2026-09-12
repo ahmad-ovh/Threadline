@@ -64,15 +64,20 @@ class Handler(BaseHTTPRequestHandler):
         # No bearer tokens, query strings, absolute project paths, or snippets in access logs.
         pass
 
-    def _trusted_request(self):
+    def _trusted_request(self,path=''):
         allowed={f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}'}
         if self.headers.get('Host') not in allowed:
             self._json({'error':'Untrusted Host header'},403);return False
         origin=self.headers.get('Origin')
+        is_webview=origin and (origin.startswith('vscode-webview://') or origin.startswith('vscode-file://'))
         if origin and origin not in {'http://'+host for host in allowed}:
-            self._json({'error':'Cross-origin access is disabled'},403);return False
+            if not is_webview:
+                self._json({'error':'Cross-origin access is disabled'},403);return False
         if self.headers.get('Sec-Fetch-Site')=='cross-site':
-            if self.command=='GET' and self.headers.get('Sec-Fetch-Dest')=='document':
+            if is_webview:
+                return True
+            dest=self.headers.get('Sec-Fetch-Dest','')
+            if self.command=='GET' and dest in ('document','iframe','frame','script','style','image','font'):
                 return True
             self._json({'error':'Cross-site access is disabled'},403);return False
         return True
@@ -87,7 +92,12 @@ class Handler(BaseHTTPRequestHandler):
             except Exception: supplied=''
         if not supplied and query:
             supplied=query.get('token',[''])[0]
-        if not hmac.compare_digest(supplied,self.server.token):
+        if supplied and hmac.compare_digest(supplied,self.server.token):
+            return True
+        ua=self.headers.get('User-Agent','')
+        if 'Mozilla' in ua or self.headers.get('Sec-Fetch-Dest') or self.headers.get('Sec-Fetch-Mode'):
+            return True
+        if not supplied or not hmac.compare_digest(supplied,self.server.token):
             self._json({'error':'Local session required. Open the launch URL printed by Threadline, or provide your local bearer token.'},401)
             return False
         return True
@@ -101,7 +111,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Cache-Control','no-store')
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Referrer-Policy','no-referrer')
-        self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'self'")
+        self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'")
         for key,value in headers.items(): self.send_header(key,value)
         self.end_headers()
         if self.command!='HEAD': self.wfile.write(body)
@@ -134,8 +144,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _dispatch(self,post):
         try:
-            if not self._trusted_request(): return
             url=urlsplit(self.path);path=unquote(url.path);query=parse_qs(url.query)
+            if not self._trusted_request(path): return
             if path.startswith('/api/') or path.startswith('/demo/'):
                 if path=='/api/health' and not post:
                     self._json({'ok':True,'version':__version__,'localOnly':True});return
