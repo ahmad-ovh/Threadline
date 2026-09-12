@@ -71,7 +71,7 @@ def validate_graph(graph: Any) -> dict:
         raise ContractError(f"edges must be an array, max {MAX_EDGES}")
     ids, edge_ids = set(), set()
     parents = {}
-    kinds = {"module", "file", "symbol", "feature", "document"}
+    kinds = {"module", "file", "symbol", "feature", "document", "suggestion"}
     for node in nodes:
         if not isinstance(node, dict):
             raise ContractError("node must be an object")
@@ -92,6 +92,12 @@ def validate_graph(graph: Any) -> dict:
             raise ContractError("node.line must be a positive integer")
         if "summary" in node:
             require_string(node["summary"], "node.summary", 10000, True)
+        if "rationale" in node:
+            require_string(node["rationale"], "node.rationale", 10000, True)
+        if "target" in node:
+            require_string(node["target"], "node.target", 4096, True)
+        if "prompt" in node:
+            require_string(node["prompt"], "node.prompt", 10000, True)
         _evidence(node.get("evidence", []))
     for nid, parent in parents.items():
         if parent not in ids:
@@ -104,7 +110,7 @@ def validate_graph(graph: Any) -> dict:
             cursor = parents[cursor]
         if cursor == nid:
             raise ContractError("parent cycle")
-    relations = {"contains", "declares", "imports", "references", "implements", "documents", "calls", "depends_on"}
+    relations = {"contains", "declares", "imports", "references", "implements", "documents", "calls", "depends_on", "suggests"}
     for edge in edges:
         if not isinstance(edge, dict):
             raise ContractError("edge must be an object")

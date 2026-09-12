@@ -167,8 +167,52 @@ function para(parent,text,cls=''){const p=document.createElement('p');p.textCont
 function section(parent,title){const d=document.createElement('span');d.className='section-label';d.textContent=title;parent.append(d);}
 function row(parent,title,subtitle,action,extra=''){const b=document.createElement('button');b.className='detail-row '+extra;b.innerHTML=`<strong>${h(title)}</strong>${subtitle?'<small>'+h(subtitle)+'</small>':''}`;b.onclick=caught(action);parent.append(b);return b;}
 function showNode(n,line=null){
- if(!n)return;S.selection=n.id;map.select(n.id);const b=drawer(n.label,n.kind==='feature'?'FEATURE INTERPRETATION':n.kind==='symbol'?'DECLARATION':'IMPLEMENTATION','node');S.selection=n.id;
+ if(!n)return;S.selection=n.id;map.select(n.id);const b=drawer(n.label,n.kind==='suggestion'?'AI PIPELINE SUGGESTION':n.kind==='feature'?'FEATURE INTERPRETATION':n.kind==='symbol'?'DECLARATION':'IMPLEMENTATION','node');S.selection=n.id;
  const idx=G.index(S.graph),prev=S.before?G.index(S.before):null,deleted=!idx.nodes.has(n.id),sourceGraph=deleted?S.before:S.graph;
+ if(n.kind==='suggestion'){
+  para(b,n.summary||'Proposed pipeline enhancement to improve development flow.');
+  para(b,'This is a proposed idea connected to your system architecture. You can prompt WorkBuddy to implement it directly.','notice');
+  if(n.rationale){
+   section(b,'SYSTEM IMPROVEMENT & ALIGNMENT');
+   para(b,n.rationale);
+  }
+  if(n.target){
+   section(b,'TARGET ARCHITECTURE COMPONENT');
+   const targetNode=sourceGraph.nodes.find(x=>x.id===n.target);
+   row(b,targetNode?G.label(targetNode):n.target,targetNode?('Jump to '+(targetNode.path||targetNode.id)):'Target component in architecture',()=>{
+    if(targetNode){
+     const sc=G.sourceScope(S.graph,targetNode.id);
+     if(sc&&sc!==S.scope)go(sc);
+     requestAnimationFrame(()=>showNode(targetNode));
+    }
+   });
+  }
+  if(n.prompt){
+   section(b,'PROMPT WORKBUDDY');
+   para(b,'Copy this prompt and send it to WorkBuddy to build this feature:');
+   const pre=document.createElement('pre');
+   pre.className='prompt-preview';
+   pre.textContent=n.prompt;
+   b.append(pre);
+   const copyBtn=document.createElement('button');
+   copyBtn.className='primary-button copy-prompt-btn';
+   copyBtn.innerHTML='<span>📋</span> Copy Prompt for WorkBuddy';
+   copyBtn.onclick=async()=>{
+    const ok=await copy(n.prompt);
+    if(ok){
+     copyBtn.classList.add('copied');
+     copyBtn.innerHTML='<span>✓</span> Copied to Clipboard!';
+     toast('WorkBuddy prompt copied to clipboard!');
+     setTimeout(()=>{
+      copyBtn.classList.remove('copied');
+      copyBtn.innerHTML='<span>📋</span> Copy Prompt for WorkBuddy';
+     },2200);
+    }
+   };
+   b.append(copyBtn);
+  }
+  return;
+ }
  if(n.kind==='feature'){
   para(b,n.summary||'A named feature linked to source by the publishing agent.');if(n.status==='stale')para(b,'Source changed. This interpretation needs review; it has not been automatically verified.','notice');else para(b,'Agent-authored interpretation, supported by source links—not proof of runtime behavior.');
   section(b,'SUPPORTING IMPLEMENTATION');for(const path of n.files||[]){const f=sourceGraph.nodes.find(f=>f.path===path&&['file','document'].includes(f.kind));row(b,path,f?'Open the recorded implementation':'Source path is no longer indexed',()=>{if(f)openFromAnywhere(f);else toast('This source path is not present in the graph.');});}return;
@@ -194,12 +238,14 @@ function openFromAnywhere(n){
  showNode(n);map.select(n.kind==='symbol'?n.parent:n.id);
 }
 function showEdge(e){
- const b=drawer(e.members.length===1?'One source relationship':e.members.length+' source relationships','WHY THESE COMPONENTS CONNECT','edge');const idx=S.projection.index;
- para(b,e.semantic?'These links are agent-authored feature interpretations. Follow the evidence to assess them.':'The arrow points from the referencing component to the component it uses. This is structural evidence, not a runtime execution trace.');
+ const isSug=e.kinds.includes('suggests');
+ const b=drawer(isSug?'Pipeline suggestion link':e.members.length===1?'One source relationship':e.members.length+' source relationships',isSug?'AI SUGGESTION CONNECTION':'WHY THESE COMPONENTS CONNECT','edge');const idx=S.projection.index;
+ para(isSug?'This dashed link connects a proposed AI development pipeline improvement to its target architecture component. Click the suggestion to inspect its rationale and copy its WorkBuddy prompt.':e.semantic?'These links are agent-authored feature interpretations. Follow the evidence to assess them.':'The arrow points from the referencing component to the component it uses. This is structural evidence, not a runtime execution trace.');
  for(const rel of e.members.slice(0,40)){
   const a=idx.nodes.get(rel.source),z=idx.nodes.get(rel.target);const block=document.createElement('div');block.className='detail-row';block.innerHTML=`<span class="relation-tag">${h(rel.kind)}${e.state==='removed'?' · REMOVED':''}</span><strong>${h(a?.label||rel.source)} → ${h(z?.label||rel.target)}</strong>`;b.append(block);
+  if(rel.kind==='suggests'&&a){row(b,'Inspect '+a.label,'View rationale and copy WorkBuddy prompt',()=>showNode(a));}
   for(const ev of rel.evidence||[]){const file=idx.nodes.get('file:'+ev.path)||[...idx.nodes.values()].find(n=>n.path===ev.path&&['file','document'].includes(n.kind));row(b,ev.path+(ev.line?':'+ev.line:''),(ev.method||'source reference')+' · '+(ev.status||'unverified'),()=>{if(file){openFromAnywhere(file);if(ev.line)showNode(file,ev.line);}else toast('The supporting file is not indexed in this revision.');});}
-  if(!(rel.evidence||[]).length)para(b,'No source-location evidence was supplied for this relationship.');
+  if(!(rel.evidence||[]).length&&rel.kind!=='suggests')para(b,'No source-location evidence was supplied for this relationship.');
  }
  if(e.members.length>40)para(b,`${e.members.length-40} more relationships are retained in the graph data.`);
 }
@@ -223,8 +269,8 @@ function renderSearch(){const q=$('search-input').value.trim().toLowerCase();if(
  $('search-results').innerHTML=S.searchResults.map((n,i)=>`<button class="search-result${i===S.searchIndex?' active':''}" data-result="${i}"><span class="result-kind">${h(n.kind)}</span><span><strong>${h(n.label)}</strong><small>${h(n.path||n.summary||n.kind)}</small></span></button>`).join('')||'<p class="empty-note" style="padding:14px">No matching indexed source. Try another name or path.</p>';
  $('search-results').querySelectorAll('[data-result]').forEach(b=>b.onclick=()=>chooseResult(Number(b.dataset.result)));
 }
-function chooseResult(i){const n=S.searchResults[i];if(!n)return;$('search-dialog').close();if(n.kind==='module'||n.kind==='feature'){go(n.id);if(n.kind==='feature')showNode(n);}else openFromAnywhere(n);}
-async function copy(text){try{await navigator.clipboard.writeText(text);toast('Copied.');}catch{toast('Clipboard is unavailable here. The path is shown in the details panel.');}}
+function chooseResult(i){const n=S.searchResults[i];if(!n)return;$('search-dialog').close();if(n.kind==='module'||n.kind==='feature'||n.kind==='suggestion'){if(n.kind!=='suggestion')go(n.id);showNode(n);}else openFromAnywhere(n);}
+async function copy(text){let ok=false;if(navigator.clipboard&&navigator.clipboard.writeText){try{await navigator.clipboard.writeText(text);ok=true;}catch(_){}}if(!ok){try{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.append(ta);ta.select();ok=document.execCommand('copy');ta.remove();}catch(_){}}if(ok)toast('Copied.');else toast('Clipboard is unavailable here.');return ok;}
 function help(kind='connect'){
  $('help-title').textContent=kind==='about'?'A map, not another platform.':'Keep a live map beside your agent.';
  if(kind==='about')$('help-body').innerHTML='<p>Threadline is a fixed viewer for a changing codebase. Click a component to enter it. Click a source file or relationship to understand its implementation. Drag nodes to arrange them; updates preserve your layout.</p><p><strong>Green</strong> marks additions; <strong>amber</strong> marks modifications; <strong>rose dashed</strong> nodes retain the context of removals. Dismissing highlights never deletes history.</p><p>Structural references are source-backed where the adapter supplies evidence. Feature mappings are interpretations and become stale when their supporting source changes. Neither proves runtime behavior.</p><p>There is no model inside this viewer. Human edits and agent edits use the same observation pipeline. Attribution is publisher-supplied; a filesystem watcher cannot reliably identify the author.</p><p>Threadline 2.0 · Cytoscape.js 3.33.1 · local-first · no external runtime requests.</p>';

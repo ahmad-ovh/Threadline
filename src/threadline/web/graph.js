@@ -33,20 +33,20 @@ function frontier(g,scope='@root',mode='modules'){
  const rootFiles=top.filter(n=>FILES.has(n.kind));
  const rootFilesNode={id:'@rootfiles',kind:'module',label:'Entry & assets',path:'.',synthetic:true,memberIds:rootFiles.map(n=>n.id)};
  if(scope==='@rootfiles')return rootFiles;
- if(mode==='features'&&scope==='@root')return g.nodes.filter(n=>n.kind==='feature').sort((a,b)=>cmp(a.label,b.label));
+ if(mode==='features'&&scope==='@root')return g.nodes.filter(n=>n.kind==='feature'||n.kind==='suggestion').sort((a,b)=>(a.kind==='suggestion'?1:0)-(b.kind==='suggestion'?1:0)||cmp(a.label,b.label));
  const scoped=nodes.get(scope);
  if(scoped?.kind==='feature'){
    const ids=new Set(g.edges.filter(e=>e.source===scope&&e.kind==='implements').map(e=>e.target));
    for(const path of scoped.files||[])for(const n of g.nodes)if(n.path===path&&FILES.has(n.kind))ids.add(n.id);
    return [...ids].map(id=>nodes.get(id)).filter(Boolean).map(n=>n.kind==='symbol'&&nodes.has(n.parent)?nodes.get(n.parent):n).filter((n,i,a)=>a.findIndex(x=>x.id===n.id)===i).sort((a,b)=>cmp(a.path||a.label,b.path||b.label));
  }
- if(scoped)return (children.get(scope)||[]).filter(n=>n.kind!=='symbol'&&n.kind!=='feature');
+ if(scoped)return (children.get(scope)||[]).filter(n=>n.kind!=='symbol'&&n.kind!=='feature'&&n.kind!=='suggestion');
  const out=[];
- function unwrap(n,depth=0){const ch=(children.get(n.id)||[]).filter(n=>n.kind!=='symbol');if(n.kind==='module'&&WRAPPERS.has(label(n))&&ch.length&&ch.every(x=>x.kind==='module')&&depth<4){ch.forEach(c=>unwrap(c,depth+1));}else out.push(n);}
+ function unwrap(n,depth=0){const ch=(children.get(n.id)||[]).filter(n=>n.kind!=='symbol'&&n.kind!=='suggestion');if(n.kind==='module'&&WRAPPERS.has(label(n))&&ch.length&&ch.every(x=>x.kind==='module')&&depth<4){ch.forEach(c=>unwrap(c,depth+1));}else out.push(n);}
  top.filter(n=>n.kind==='module').forEach(n=>unwrap(n));
  if(rootFiles.length)out.unshift(rootFilesNode);
  // A publisher can supply unparented files or modules, without a conventional root.
- if(!out.length)for(const n of g.nodes)if(!n.parent&&n.kind!=='feature'&&n.id!==rootId)out.push(n);
+ if(!out.length)for(const n of g.nodes)if(!n.parent&&n.kind!=='feature'&&n.kind!=='suggestion'&&n.id!==rootId)out.push(n);
  return out;
 }
 function project(input,options={}){
@@ -60,8 +60,9 @@ function project(input,options={}){
    let state=changes.get(n.id)||'';if(!state&&Object.values(counts).some(Boolean))state='changed';
    const memberSet=new Set(mem.map(n=>n.id));const incoming=g.edges.filter(e=>!STRUCTURE.has(e.kind)&&memberSet.has(e.target)&&!memberSet.has(e.source)).length;
    const sample=(n.kind==='module'?files:syms).slice().sort((a,b)=>cmp(a.path||a.label,b.path||b.label)).slice(0,2).map(n=>n.label);
-   visible.set(n.id,{id:n.id,label:label(n),path:n.path||'',kind:n.kind,base:n,context,members:mem.map(n=>n.id),fileCount:files.length,symbolCount:syms.length,counts,state,stale:n.status==='stale',sample,incoming,summary:n.summary||'',w:W,h:H});
+   visible.set(n.id,{id:n.id,label:label(n),path:n.path||'',kind:n.kind,base:n,context,members:mem.map(n=>n.id),fileCount:files.length,symbolCount:syms.length,counts,state,stale:n.status==='stale',sample,incoming,summary:n.summary||'',rationale:n.rationale||'',target:n.target||'',prompt:n.prompt||'',w:W,h:H});
    for(const m of mem)if(!owner.has(m.id))owner.set(m.id,n.id);
+   if(!owner.has(n.id))owner.set(n.id,n.id);
  }
  display.forEach(n=>add(n));
  // Feature overview uses interpretation links to architectural modules, not a hairball of files.
@@ -84,10 +85,21 @@ function project(input,options={}){
    }
    [...candidates.values()].sort((a,b)=>b.count-a.count||cmp(a.node.id,b.node.id)).slice(0,8).forEach(c=>add(c.node,true));
  }
+ // Connect AI pipeline suggestions to visible nodes
+ const rootId=g.nodes.find(n=>n.kind==='module'&&(n.path==='.'||n.id==='module:.'))?.id;
+ const sugNodes=g.nodes.filter(n=>n.kind==='suggestion');
+ for(const sug of sugNodes){
+   const targetId=sug.target||'module:.';
+   const targetInView=visible.has(targetId)||(scope==='@root'&&(!sug.target||sug.target==='module:.'||sug.target===rootId));
+   const targetInScope=(scope!=='@root'&&(targetId===scope||descendants(scope).some(d=>d.id===targetId)));
+   if(targetInView||targetInScope){
+     add(sug,true);
+   }
+ }
  const links=new Map();let hiddenRelations=0;
- for(const e of g.edges){if(STRUCTURE.has(e.kind))continue;if(mode!=='features'&&scope==='@root'&&e.kind==='implements')continue;if(mode==='features'&&scope==='@root'&&e.kind!=='implements')continue;
+ for(const e of g.edges){if(STRUCTURE.has(e.kind))continue;if(mode!=='features'&&scope==='@root'&&e.kind==='implements')continue;if(mode==='features'&&scope==='@root'&&e.kind!=='implements'&&e.kind!=='suggests')continue;
   const s=owner.get(e.source),t=owner.get(e.target);if(!s||!t){if(s||t)hiddenRelations++;continue;}if(s===t)continue;
-  const state=edgeChanges.get(e.id)||'',semantic=e.kind==='implements';const key=JSON.stringify([s,t,semantic,state==='removed']);
+  const state=edgeChanges.get(e.id)||'',semantic=e.kind==='implements'||e.kind==='suggests';const key=JSON.stringify([s,t,semantic,state==='removed']);
   if(!links.has(key))links.set(key,{id:'e:'+key,source:s,target:t,members:[],kinds:new Set(),state:'',semantic});const link=links.get(key);link.members.push(e);link.kinds.add(e.kind);if(state==='removed'||state==='added'||(!link.state&&state))link.state=state;
  }
  const edges=[...links.values()].map(e=>({...e,kinds:[...e.kinds]}));
@@ -131,6 +143,6 @@ function layout(projection,previous=new Map()){
  return positions;
 }
 function fileCounts(delta){const out={added:0,changed:0,removed:0};if(delta)for(const key of Object.keys(out))out[key]=delta.nodes[key].filter(n=>FILES.has((n.after||n).kind)).length;return out;}
-function sourceScope(graph,id){const idx=index(graph);let n=idx.nodes.get(id);if(!n)return '@root';if(n.kind==='module'||n.kind==='feature')return n.id;if(n.kind==='symbol')n=idx.nodes.get(n.parent)||n;const p=idx.nodes.get(n.parent);return p?.path==='.'?'@rootfiles':p?.id||'@root';}
+function sourceScope(graph,id){const idx=index(graph);let n=idx.nodes.get(id);if(!n)return '@root';if(n.kind==='suggestion')return '@root';if(n.kind==='module'||n.kind==='feature')return n.id;if(n.kind==='symbol')n=idx.nodes.get(n.parent)||n;const p=idx.nodes.get(n.parent);return p?.path==='.'?'@rootfiles':p?.id||'@root';}
 const api={validate,index,diff,changeMap,overlay,label,frontier,project,layout,fileCounts,sourceScope,stable,W,H};root.ThreadlineGraph=api;if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

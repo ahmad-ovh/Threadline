@@ -14,7 +14,7 @@ from . import __version__
 from .demos import setup_demos, apply_demo_change
 from .exporter import render_export
 from .model import ContractError, ConflictError, MissingError, canonical, digest, slug
-from .scanner import Scanner, Tracker, write_feature
+from .scanner import Scanner, Tracker, write_feature, write_suggestion
 from .server import LocalServer
 from .store import Store
 
@@ -79,6 +79,10 @@ def parser():
     s=sub.add_parser('feature',help='Write/update a reviewed, source-hashed feature mapping; edits .threadline/features.json')
     s.add_argument('project');s.add_argument('--id',required=True);s.add_argument('--name',required=True)
     s.add_argument('--description',required=True);s.add_argument('--files',nargs='+',required=True);s.add_argument('--author',default='agent')
+    s=sub.add_parser('suggest',help='Register/update an AI feature suggestion; edits .threadline/suggestions.json')
+    s.add_argument('project');s.add_argument('--id',required=True);s.add_argument('--name',required=True)
+    s.add_argument('--description',required=True);s.add_argument('--target',default='module:.')
+    s.add_argument('--rationale',default='');s.add_argument('--prompt',default='');s.add_argument('--author',default='ai-pipeline')
     s=sub.add_parser('export',help='Export a source-text-free data bundle or self-contained HTML view')
     s.add_argument('project');s.add_argument('--out',required=True);s.add_argument('--format',choices=['json','html'],default='json');s.add_argument('--no-history',action='store_true')
     s=sub.add_parser('demo-change',help='Apply/revert a SCRIPTED code change only in a bundled demo copy')
@@ -159,6 +163,12 @@ def main(argv=None):
             if project['mode']!='filesystem': raise ContractError('Use graph publication for feature nodes in a publisher-owned project')
             path=write_feature(Path(project['root']),args.id,args.name,args.files,args.description,args.author)
             result={'manifest':str(path),'update':Scanner(store,args.project).scan('Feature mapping reviewed: '+args.name,actor=args.author)}
+            result['update'].pop('delta',None)
+        elif command=='suggest':
+            project=store.project(args.project)
+            if project['mode']!='filesystem': raise ContractError('Use graph publication for suggestion nodes in a publisher-owned project')
+            path=write_suggestion(Path(project['root']),args.id,args.name,args.target,args.description,args.rationale,args.prompt,args.author)
+            result={'manifest':str(path),'update':Scanner(store,args.project).scan('Feature suggestion added: '+args.name,actor=args.author)}
             result['update'].pop('delta',None)
         elif command=='export':
             bundle=store.export(args.project,not args.no_history)

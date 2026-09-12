@@ -9,7 +9,7 @@ import time
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 from threadline.store import Store
-from threadline.scanner import Scanner, Tracker, write_feature, analyze, MAX_FILE_BYTES
+from threadline.scanner import Scanner, Tracker, write_feature, write_suggestion, analyze, MAX_FILE_BYTES
 from threadline.model import ContractError
 
 class ScannerTests(unittest.TestCase):
@@ -83,5 +83,22 @@ class ScannerTests(unittest.TestCase):
     def test_watcher_error_reports_stale_not_silent_success(self):
         self.put('a.py','x=1');self.scanner.scan();self.put('.threadline/features.json','bad');tracker=Tracker(self.store,.25)
         self.assertRaises(ContractError,tracker.scan,'game');self.assertFalse(tracker.status['game']['ok']);self.assertEqual(self.store.head('game'),1)
+    def test_default_suggestions_and_suggests_edge(self):
+        self.put('a.py','x=1')
+        g=self.graph()
+        sugs=[n for n in g['nodes'] if n['kind']=='suggestion']
+        self.assertGreaterEqual(len(sugs),1)
+        suggests_edges=[e for e in g['edges'] if e['kind']=='suggests']
+        self.assertGreaterEqual(len(suggests_edges),1)
+        self.assertTrue(all(s.get('prompt') and s.get('rationale') for s in sugs))
+    def test_custom_suggestion_manifest(self):
+        self.put('src/api.py','def endpoint(): pass\n')
+        write_suggestion(self.root,'audit-log','Audit Logging','module:src','Track user mutations','Improves enterprise observability','Implement an AuditLog module in src/api.py to record mutations.')
+        g=self.graph()
+        sug=next(n for n in g['nodes'] if n['id']=='suggestion:audit-log')
+        self.assertEqual(sug['label'],'Audit Logging')
+        self.assertEqual(sug['rationale'],'Improves enterprise observability')
+        self.assertEqual(sug['prompt'],'Implement an AuditLog module in src/api.py to record mutations.')
+        self.assertTrue(any(e['source']=='suggestion:audit-log' and e['kind']=='suggests' for e in g['edges']))
 
 if __name__=='__main__':unittest.main()

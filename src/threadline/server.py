@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from . import __version__
 from .demos import apply_demo_change, live_build_steps
 from .model import ContractError, ConflictError, MissingError, canonical, digest, now
-from .scanner import Tracker
+from .scanner import Tracker, write_suggestion
 from .store import Store
 
 WEB = Path(__file__).parent / 'web'
@@ -207,6 +207,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json(self.server.tracker.scan(pid,summary=body.get('summary','Manual source scan'),actor='user',force=bool(body.get('force',False))))
         elif action=='checkpoint':
             self._json(store.checkpoint(pid,body.get('name',''),body.get('note',''),body.get('revision')),201)
+        elif action=='suggest':
+            project=store.project(pid)
+            if project['mode']!='filesystem': raise ContractError('Use graph publication for suggestion nodes in a publisher-owned project')
+            sid=body.get('id') or ('sug-'+secrets.token_hex(4))
+            name=body.get('name') or 'Proposed improvement'
+            target=body.get('target') or 'module:.'
+            desc=body.get('description') or ''
+            rationale=body.get('rationale') or ''
+            prompt=body.get('prompt') or ''
+            author=body.get('author') or 'ai-pipeline'
+            path=write_suggestion(Path(project['root']),sid,name,target,desc,rationale,prompt,author)
+            res=self.server.tracker.scan(pid,summary='Feature suggestion added: '+name,actor=author,force=True)
+            self._json({'ok':True,'manifest':str(path),'revision':res.get('revision')},201);return
         elif action in ('publish','patch'):
             project=store.project(pid)
             if action=='publish' and project['mode']!='published':

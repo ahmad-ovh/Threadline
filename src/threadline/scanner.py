@@ -192,12 +192,55 @@ class Scanner:
             raise ContractError('Manifest must have a features array (max 500)')
         return manifest,sha(raw)
 
+    def _default_suggestions(self) -> dict:
+        return {'version': '1.0', 'suggestions': [
+            {
+                'id': 'pipeline-ci',
+                'name': 'CI/CD & Test Automation',
+                'target': 'module:.',
+                'description': 'Automated regression test runner and continuous integration pipeline for code changes.',
+                'rationale': 'Prevents syntax errors and regressions before merging agent-authored modifications, safeguarding system stability.',
+                'prompt': 'Add an automated test and lint workflow (e.g. GitHub Actions or package.json test script) to verify build and test integrity.',
+                'author': 'ai-pipeline',
+                'status': 'proposed'
+            },
+            {
+                'id': 'pipeline-telemetry',
+                'name': 'Health & Error Diagnostics',
+                'target': 'module:.',
+                'description': 'Centralized error boundary handling, structured runtime logging, and health probe check.',
+                'rationale': 'Captures actionable failure context and diagnostic logs so WorkBuddy can troubleshoot runtime issues without manual inspection.',
+                'prompt': 'Implement structured diagnostic logging and a runtime health check endpoint to streamline error identification.',
+                'author': 'ai-pipeline',
+                'status': 'proposed'
+            }
+        ]}
+
+    def _suggestions(self, root: Path) -> tuple[dict, str]:
+        file = root / '.threadline' / 'suggestions.json'
+        if not file.exists():
+            defaults = self._default_suggestions()
+            return defaults, digest(defaults)
+        if file.is_symlink() or (root / '.threadline').is_symlink() or not file.resolve().is_relative_to(root):
+            raise ContractError('Suggestions manifest must not be a symlink')
+        if file.stat().st_size > MAX_FILE_BYTES:
+            raise ContractError('Suggestions manifest too large')
+        raw = file.read_bytes()
+        try:
+            manifest = json.loads(raw)
+        except (ValueError, UnicodeError) as exc:
+            raise ContractError(f'Invalid .threadline/suggestions.json: {exc}') from exc
+        if not isinstance(manifest, dict) or not isinstance(manifest.get('suggestions'), list) or len(manifest['suggestions']) > 500:
+            raise ContractError('Manifest must have a suggestions array (max 500)')
+        return manifest, sha(raw)
+
     def build(self, project: dict) -> tuple[dict,dict]:
         root=Path(project['root']).resolve()
         if not root.is_dir(): raise ContractError(f"Project root is unavailable: {root}")
         started=time.perf_counter()
         files,warnings=self._paths(root)
         manifest,manifest_hash=self._features(root)
+        suggestions,suggestions_hash=self._suggestions(root)
         reads=0
         active={p for p,_,_ in files}
         self.cache={k:v for k,v in self.cache.items() if k in active}
@@ -225,6 +268,9 @@ class Scanner:
         _,after_manifest_hash=self._features(root)
         if after_manifest_hash!=manifest_hash:
             raise ConflictError('Feature manifest moved during scan; retry scan')
+        _,after_suggestions_hash=self._suggestions(root)
+        if after_suggestions_hash!=suggestions_hash:
+            raise ConflictError('Suggestions manifest moved during scan; retry scan')
         nodes={}; edges={}; blobs={}
         def put_edge(e):
             if e['id'] in edges:
@@ -342,6 +388,27 @@ class Scanner:
             nodes['feature:'+fid]={'id':'feature:'+fid,'kind':'feature','label':feature.get('name',fid),
                 'summary':feature.get('description',''),'evidence':evidence,'status':'stale' if stale else 'unverified' if unverified else 'interpretation',
                 'author':feature.get('author','human'),'files':paths,'note':'A source-linked interpretation, not proof of runtime behavior.'}
+        seen_suggestions=set()
+        for s in suggestions.get('suggestions',[]):
+            if not isinstance(s,dict): raise ContractError('Each suggestion must be an object')
+            sid=s.get('id')
+            if not isinstance(sid,str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,80}',sid) or sid in seen_suggestions:
+                raise ContractError('Suggestion IDs must be unique simple identifiers')
+            seen_suggestions.add(sid)
+            target=s.get('target','module:.')
+            if target not in nodes:
+                if 'file:'+target in nodes: target='file:'+target
+                elif 'module:'+target in nodes: target='module:'+target
+            if target not in nodes:
+                target='module:.' if 'module:.' in nodes else next((nid for nid in nodes if nodes[nid]['kind']=='module'),None)
+            snid='suggestion:'+sid
+            nodes[snid]={'id':snid,'kind':'suggestion','label':s.get('name',sid),
+                         'summary':s.get('description',''),'rationale':s.get('rationale',''),
+                         'target':target or 'module:.','prompt':s.get('prompt',''),
+                         'author':s.get('author','ai-pipeline'),'status':s.get('status','proposed'),
+                         'note':'Proposed AI pipeline feature. Click for implementation prompt.'}
+            if target and target in nodes:
+                put_edge(edge(snid,target,'suggests'))
         git_dir = root / '.git'
         git_mtime = 0
         if git_dir.is_dir():
@@ -362,7 +429,7 @@ class Scanner:
         stats={'files':len(self.cache),'filesRead':reads,'cacheHits':len(self.cache)-reads,'durationMs':round((time.perf_counter()-started)*1000,2)}
         self.last_stats=stats
         graph={'schemaVersion':'1.0','project':{'id':project['id'],'name':project['name']},
-               'source':{'treeHash':digest({'files':{p:c.hash for p,c in sorted(self.cache.items())},'features':manifest_hash}),
+               'source':{'treeHash':digest({'files':{p:c.hash for p,c in sorted(self.cache.items())},'features':manifest_hash,'suggestions':suggestions_hash}),
                    'commit':commit.decode().strip() if commit else None,'branch':branch.decode().strip() if branch else None,
                    'dirty':bool(status) if status is not None else None,'capturedAt':now(),'scanStats':stats,'publisher':'threadline-scanner',
                    'coverage':'Python AST imports; lexical JS/TS and Godot literal references; other files inventoried. No runtime or whole-program call graph.'},
@@ -445,4 +512,30 @@ def write_feature(root: Path, ident: str, name: str, paths: list[str], descripti
     temporary=directory/('features-'+str(uuid.uuid4())+'.tmp')
     temporary.write_text(json.dumps(manifest,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
     os.replace(temporary,path)
+    return path
+
+def write_suggestion(root: Path, ident: str, name: str, target: str, description: str, rationale: str = '', prompt: str = '', author: str = 'ai-agent') -> Path:
+    root = root.resolve()
+    if not re.fullmatch(r'[a-zA-Z0-9_-]{1,80}', ident): raise ContractError('Invalid suggestion ID')
+    directory = root / '.threadline'
+    if directory.is_symlink(): raise ContractError('Manifest directory is a symlink')
+    directory.mkdir(exist_ok=True)
+    path = directory / 'suggestions.json'
+    if path.is_symlink(): raise ContractError('Manifest is a symlink')
+    manifest = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {'version':'1.0','suggestions':[]}
+    item = {
+        'id': ident,
+        'name': name,
+        'target': target,
+        'description': description,
+        'rationale': rationale,
+        'prompt': prompt,
+        'author': author,
+        'status': 'proposed',
+        'createdAt': now()
+    }
+    manifest['suggestions'] = [s for s in manifest.get('suggestions', []) if s.get('id') != ident] + [item]
+    temporary = directory / ('suggestions-' + str(uuid.uuid4()) + '.tmp')
+    temporary.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    os.replace(temporary, path)
     return path

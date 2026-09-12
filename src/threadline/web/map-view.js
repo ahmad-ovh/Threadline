@@ -4,14 +4,15 @@
 'use strict';
 const G=root.ThreadlineGraph;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const icons={module:'<path d="M2 4h4l2 2h6v8H2z"/>',file:'<path d="M4 2h5l3 3v9H4zM9 2v4h3M6 9h4M6 11h3"/>',feature:'<path d="m8 1 2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/>',document:'<path d="M3 2h10v12H3zM5 5h6M5 8h6M5 11h4"/>'};
+const icons={module:'<path d="M2 4h4l2 2h6v8H2z"/>',file:'<path d="M4 2h5l3 3v9H4zM9 2v4h3M6 9h4M6 11h3"/>',feature:'<path d="m8 1 2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/>',document:'<path d="M3 2h10v12H3zM5 5h6M5 8h6M5 11h4"/>',suggestion:'<path d="M8 1a5 5 0 0 0-3.5 8.5c.7.7 1.1 1.6 1.2 2.5h4.6c.1-.9.5-1.8 1.2-2.5A5 5 0 0 0 8 1zm-2 13h4M7 15h2"/>'};
 function card(n){
- const type=n.context?'CONNECTED '+(n.kind==='module'?'MODULE':'FILE'):n.kind==='module'?'COMPONENT':n.kind==='feature'?'FEATURE · INTERPRETED':n.kind==='document'?'DOCUMENT':'SOURCE FILE';
+ const type=n.kind==='suggestion'?'💡 AI SUGGESTION':n.context?'CONNECTED '+(n.kind==='module'?'MODULE':'FILE'):n.kind==='module'?'COMPONENT':n.kind==='feature'?'FEATURE · INTERPRETED':n.kind==='document'?'DOCUMENT':'SOURCE FILE';
  const icon='<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.15" aria-hidden="true">'+(icons[n.kind]||icons.file)+'</svg>';
- let status=n.state==='added'?'+ NEW':n.state==='changed'?'~ UPDATED':n.state==='removed'?'− REMOVED':n.stale?'REVIEW':'';
- let foot=n.kind==='module'?`<b>${n.fileCount}</b> file${n.fileCount!==1?'s':''} · ${n.symbolCount} declaration${n.symbolCount!==1?'s':''}`:n.kind==='feature'?n.stale?'Source changed · review mapping':`${n.base.files?.length||0} source links`:`${esc(n.base.language||n.base.analysis||'source')} · ${esc(n.base.lines??'–')} lines`;
+ let status=n.kind==='suggestion'?'PROPOSED':n.state==='added'?'+ NEW':n.state==='changed'?'~ UPDATED':n.state==='removed'?'− REMOVED':n.stale?'REVIEW':'';
+ let foot=n.kind==='suggestion'?'Pipeline suggestion · click for prompt':n.kind==='module'?`<b>${n.fileCount}</b> file${n.fileCount!==1?'s':''} · ${n.symbolCount} declaration${n.symbolCount!==1?'s':''}`:n.kind==='feature'?n.stale?'Source changed · review mapping':`${n.base.files?.length||0} source links`:`${esc(n.base.language||n.base.analysis||'source')} · ${esc(n.base.lines??'–')} lines`;
  let samples=n.sample||[];if(n.kind==='feature')samples=(n.base.files||[]).map(p=>p.split('/').pop()).slice(0,2);
- return `<div class="node-top"><span class="node-type">${icon}${esc(type)}</span>${status?`<span class="node-state">${esc(status)}</span>`:''}</div><div class="node-title"><span>${esc(n.label)}</span></div><div class="node-path">${esc(n.kind==='feature'?(n.base.description||n.summary||'A feature-to-source interpretation'):n.path||'Project entry points')}</div><div class="node-preview">${samples.map(s=>`<span>${esc(s)}</span>`).join('')}</div><div class="node-footer"><span>${foot}</span><span class="arrow" aria-hidden="true">${n.state==='removed'?'−':n.kind==='module'||n.kind==='feature'?'↗':'↗'}</span></div>`;
+ if(n.kind==='suggestion')samples=[n.base.target?('targets '+n.base.target.split(':').pop()):'pipeline idea'];
+ return `<div class="node-top"><span class="node-type">${icon}${esc(type)}</span>${status?`<span class="node-state">${esc(status)}</span>`:''}</div><div class="node-title"><span>${esc(n.label)}</span></div><div class="node-path">${esc(n.kind==='suggestion'?(n.base.rationale||n.summary||'Proposed pipeline improvement'):n.kind==='feature'?(n.base.description||n.summary||'A feature-to-source interpretation'):n.path||'Project entry points')}</div><div class="node-preview">${samples.map(s=>`<span>${esc(s)}</span>`).join('')}</div><div class="node-footer"><span>${foot}</span><span class="arrow" aria-hidden="true">${n.kind==='suggestion'?'→':n.state==='removed'?'−':n.kind==='module'||n.kind==='feature'?'↗':'↗'}</span></div>`;
 }
 class GraphMap{
  constructor(options){
@@ -20,6 +21,7 @@ class GraphMap{
    {selector:'node',style:{width:G.W,height:G.H,shape:'roundrectangle','background-color':'#1c2735','background-opacity':.01,'border-width':0,label:'','overlay-opacity':0}},
    {selector:'edge',style:{width:1.55,'line-color':'#506b8c','target-arrow-color':'#718cab','target-arrow-shape':'triangle','arrow-scale':.8,'curve-style':'bezier','control-point-step-size':55,'line-opacity':.8,'source-endpoint':'outside-to-node','target-endpoint':'outside-to-node',label:'data(caption)','font-size':10,'font-family':'system-ui','font-weight':400,color:'#8ba4c1','text-background-color':'#101419','text-background-opacity':1,'text-background-padding':5,'text-background-shape':'roundrectangle','text-rotation':'none','text-margin-y':-2,'overlay-opacity':0,'text-events':'yes'}},
    {selector:'edge.semantic',style:{'line-style':'dashed','line-color':'#8a7ba5','target-arrow-color':'#9685b9',color:'#ad9bc7'}},
+   {selector:'edge.suggests',style:{'line-style':'dashed','line-color':'#6b829e','target-arrow-color':'#7d98b8','target-arrow-shape':'triangle','arrow-scale':.85,'width':1.6,color:'#8ea2bd'}},
    {selector:'edge.added',style:{'line-color':'#84c9a8','target-arrow-color':'#84c9a8',color:'#acd7bb',width:2}},
    {selector:'edge.changed',style:{'line-color':'#c3a16c','target-arrow-color':'#c3a16c',color:'#d4b481',width:2}},
    {selector:'edge.removed',style:{'line-color':'#b5767f','target-arrow-color':'#b5767f',color:'#c88d96','line-style':'dashed',width:1.5}},
@@ -42,7 +44,7 @@ class GraphMap{
   this.cy.batch(()=>{
    this.cy.edges().forEach(e=>{if(!edgeIds.has(e.id()))e.remove();});this.cy.nodes().forEach(n=>{if(!ids.has(n.id()))n.remove();});
    for(const n of projection.nodes){let el=this.cy.getElementById(n.id);const pos=positions.get(n.id)||{x:0,y:0};if(!el.length){el=this.cy.add({group:'nodes',data:{id:n.id},position:{x:pos.x,y:pos.y}});}else el.position({x:pos.x,y:pos.y});if(n.state==='removed')el.ungrabify();else el.grabify();}
-   for(const e of projection.edges){const caption=e.semantic?(e.members.length===1?'maps to':e.members.length+' source links'):(e.members.length===1?e.kinds[0]:e.members.length+' references');let el=this.cy.getElementById(e.id);const data={id:e.id,source:e.source,target:e.target,caption};if(!el.length)el=this.cy.add({group:'edges',data});else el.data(data);el.classes([e.state,e.semantic?'semantic':''].filter(Boolean).join(' '));}
+   for(const e of projection.edges){const caption=e.semantic?(e.kinds.includes('suggests')?'suggests':e.members.length===1?'maps to':e.members.length+' source links'):(e.members.length===1?e.kinds[0]:e.members.length+' references');let el=this.cy.getElementById(e.id);const data={id:e.id,source:e.source,target:e.target,caption};if(!el.length)el=this.cy.add({group:'edges',data});else el.data(data);el.classes([e.state,e.semantic?'semantic':'',e.kinds.includes('suggests')?'suggests':''].filter(Boolean).join(' '));}
   });
   for(const [id,c] of this.cards)if(!ids.has(id)){c.remove();this.cards.delete(id);}
   for(const n of projection.nodes){let c=this.cards.get(n.id),fresh=!c;if(!c){c=document.createElement('button');c.type='button';c.dataset.node=n.id;c.setAttribute('aria-label',n.kind==='module'||n.kind==='feature'?'Explore '+n.label:'Inspect '+n.label);c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();this.o.onNode(this.lookup(n.id));}});c.addEventListener('focus',()=>this.highlight(n.id));c.addEventListener('blur',()=>this.highlight(null));this.layer.append(c);this.cards.set(n.id,c);}

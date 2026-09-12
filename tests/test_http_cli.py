@@ -13,6 +13,7 @@ import unittest
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
+sys.path.insert(0,str(Path(__file__).resolve().parent))
 from threadline.store import Store
 from threadline.scanner import Scanner,Tracker
 from threadline.server import LocalServer
@@ -108,6 +109,17 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(res['revision'],2)
         self.assertTrue(res['changed'])
 
+    def test_filesystem_graph_accepts_suggest_api(self):
+        payload={'id':'test-ci','name':'CI Pipeline','target':'module:.','description':'Automated tests','rationale':'Prevents regressions','prompt':'Create a GitHub actions workflow in .github/workflows/ci.yml'}
+        status,_,reply=self.req('/api/projects/local/suggest',payload)
+        self.assertEqual(status,201)
+        res=json.loads(reply)
+        self.assertTrue(res['ok'])
+        self.assertEqual(res['revision'],2)
+        snap=self.store.snapshot('local')
+        self.assertTrue(any(n['id']=='suggestion:test-ci' for n in snap['nodes']))
+
+
 class CLITests(unittest.TestCase):
     def setUp(self):self.tmp=tempfile.TemporaryDirectory();self.home=Path(self.tmp.name)/'home'
     def tearDown(self):self.tmp.cleanup()
@@ -134,5 +146,14 @@ class CLITests(unittest.TestCase):
         res=json.loads(r.stdout)
         self.assertEqual(res['revision'],2)
         self.assertTrue(res['changed'])
+
+    def test_suggest_cli_updates_suggestions_manifest(self):
+        root=Path(self.tmp.name)/'game';root.mkdir();(root/'main.py').write_text('pass\n')
+        self.run_cli('add',str(root),'--id','game')
+        r=self.run_cli('suggest','game','--id','ci-cd','--name','CI/CD Automation','--target','module:.','--description','Run tests on commit','--rationale','Keeps trunk green','--prompt','Set up pytest in CI')
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertTrue((root/'.threadline/suggestions.json').exists())
+        manifest=json.loads((root/'.threadline/suggestions.json').read_text(encoding='utf-8'))
+        self.assertEqual(manifest['suggestions'][0]['id'],'ci-cd')
 
 if __name__=='__main__':unittest.main()
